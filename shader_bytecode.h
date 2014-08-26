@@ -85,7 +85,7 @@ union Instruction {
 
     uint32_t hex;
 
-    BitField<0x1a, 6, OpCode> opcode;
+    BitField<0x1a, 0x6, OpCode> opcode;
 
     // General notes:
     //
@@ -152,10 +152,8 @@ union Instruction {
                     return Output;
                 else if (Value() < 0x10)
                     return Unknown;
-                else if (Value() < 0x20)
-                    return Temporary;
                 else
-                    return Unknown;
+                    return Temporary;
             }
 
             int GetIndex() const {
@@ -255,7 +253,7 @@ union SwizzlePattern {
     BitField<18, 2, Selector> src2_selector_1;
     BitField<20, 2, Selector> src2_selector_0;
 
-    BitField<31, 1, uint32_t> flag; // not sure what this means, maybe it's the sign?
+    BitField<31, 1, uint32_t> flag; // not sure what this is
 };
 static_assert(sizeof(SwizzlePattern) == 0x4, "Incorrect structure size");
 
