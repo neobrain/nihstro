@@ -26,6 +26,7 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <cassert>
+#include <cmath>
 #include <iostream>
 #include <iomanip>
 #include <fstream>
@@ -37,6 +38,7 @@
 typedef uint8_t u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
+typedef uint64_t u64;
 
 #pragma pack(1)
 struct DVLBHeader {
@@ -371,6 +373,41 @@ static_assert(sizeof(SwizzlePattern) == 0x4, "Incorrect structure size");
 
 #pragma pack()
 
+struct float24 {
+    static float24 FromFloat32(float val) {
+        float24 ret;
+        ret.value = val;
+        return ret;
+    }
+
+    // 16 bit mantissa, 7 bit exponent, 1 bit sign
+    // TODO: No idea if this works as intended
+    static float24 FromRawFloat24(u32 hex) {
+        float24 ret;
+        if ((hex & 0xFFFFFF) == 0) {
+            ret.value = 0;
+        } else {
+            u32 mantissa = hex & 0xFFFF;
+            u32 exponent = (hex >> 16) & 0x7F;
+            u32 sign = hex >> 23;
+            ret.value = std::pow(2.0f, (float)exponent-63.0f) * (1.0f + mantissa * std::pow(2.0f, -16.f));
+            if (sign)
+                ret.value = -ret.value;
+        }
+        return ret;
+    }
+
+    // Not recommended for anything but logging
+    float ToFloat32() const {
+        return value;
+    }
+
+private:
+    // Stored as a regular float, merely for convenience
+    // TODO: Perform proper arithmetic on this!
+    float value;
+};
+
 int main(int argc, char *argv[])
 {
     // TODO: Make this check portable!
@@ -414,7 +451,10 @@ int main(int argc, char *argv[])
         return 0;
     }
 
-    std::cout << "Got " << dvlb_header.num_programs << " DVLE headers" << std::endl;
+    // TODO: Size restriction
+    SwizzlePattern swizzle_patterns[1024];
+    file.seekg(dvlp_offset + dvlp_header.unk1_offset);
+    file.read((char*)swizzle_patterns, 8 * dvlp_header.unk1_num_entries);
 
     auto ReadSymbol = [](std::fstream& file, u32 offset) {
                           // TODO: It's annoying that we just have to blindly read as many characters as possible...
@@ -443,6 +483,8 @@ int main(int argc, char *argv[])
                   << std::setfill(' ') << std::dec << std::endl;
     }
 
+    std::cout << "Got " << dvlb_header.num_programs << " DVLE headers" << std::endl;
+
     if (argc < 3) {
         std::cout << "Error: No DVLE index given" << std::endl;
         return 0;
@@ -455,16 +497,50 @@ int main(int argc, char *argv[])
         return 0;
     }
 
-    // TODO: Size restriction
-    SwizzlePattern swizzle_patterns[1024];
-    file.seekg(dvlp_offset + dvlp_header.unk1_offset);
-    std::cout << "Reading " << dvlp_header.unk1_num_entries << " swizzle pattern entries from offset 0x" << std::hex << dvlp_header.unk1_offset << std::endl;
-    file.read((char*)swizzle_patterns, 8 * dvlp_header.unk1_num_entries);
-
     auto& dvle_header = dvle_headers[dvle_index];
     auto& dvle_offset = dvle_offsets[dvle_index];
 
     u32 symbol_table_offset = dvle_offset + dvle_header.symbol_table_offset;
+
+    u32 constant_table_offset = dvle_offset + dvle_header.constant_table_offset;
+    struct ConstantInfo {
+        union {
+            BitField<0, 1, u32> is_float32; // Custom extension, NOT OFFICIALLY SUPPORTED, only added to support loading citra's shader dumps until citra can convert floats to float24
+            BitField<16, 8, u32> regid;
+            u32 full_first_word;
+        };
+
+        // float24 values..
+        u32 x;
+        u32 y;
+        u32 z;
+        u32 w;
+    };
+    std::vector<ConstantInfo> constant_table;
+    constant_table.resize(dvle_header.constant_table_size);
+
+    file.seekg(constant_table_offset);
+    for (int i = 0; i < dvle_header.constant_table_size; ++i) {
+        auto& info = constant_table[i];
+        file.read((char*)&info, sizeof(ConstantInfo));
+        if (info.is_float32) {
+            std::cout << "Constant register info:  const" << info.regid.Value()
+                      << " = (" << *(float*)&info.x << ", " << *(float*)&info.y
+                      << ", " << *(float*)&info.z << ", " << *(float*)&info.w << ")"
+                      << "  (raw: 0x" << std::hex << std::setfill('0') << std::setw(8) << info.full_first_word
+                      << " 0x" << std::setw(8) << info.x << " 0x" << std::setw(8) << info.y
+                      << " 0x" << std::setw(8) << info.z << " 0x" << std::setw(8) << info.w << std::dec << std::setfill( ' ') << ")"
+                      << std::endl;
+        } else {
+            std::cout << "Constant register info:  const" << info.regid.Value()
+                      << " = (" << float24::FromRawFloat24(info.x).ToFloat32() << ", " << float24::FromRawFloat24(info.y).ToFloat32()
+                      << ", " << float24::FromRawFloat24(info.z).ToFloat32() << ", " << float24::FromRawFloat24(info.w).ToFloat32() << ")"
+                      << "  (raw: 0x" << std::hex << std::setfill('0') << std::setw(8) << info.full_first_word
+                      << " 0x" << std::setw(8) << info.x << " 0x" << std::setw(8) << info.y
+                      << " 0x" << std::setw(8) << info.z << " 0x" << std::setw(8) << info.w << std::dec << std::setfill( ' ') << ")"
+                      << std::endl;
+        }
+    }
 
     u32 label_table_offset = dvle_offset + dvle_header.label_table_offset;
     struct LabelTableEntry{
@@ -485,6 +561,59 @@ int main(int argc, char *argv[])
     for (const auto& label_info : label_table) {
         labels.insert({label_info.program_offset, ReadSymbol(file, symbol_table_offset + label_info.name_offset)});
         std::cout << "Found label \"" << labels[label_info.program_offset] << "\" at program offset 0x" << std::hex << 4 * label_info.program_offset << std::endl;
+    }
+
+    // output register information
+    union OutputRegisterInfo {
+        enum Type : u64 {
+            POSITION  = 0,
+            COLOR     = 2,
+            TEXCOORD0 = 3,
+            TEXCOORD1 = 5,
+            TEXCOORD2 = 6,
+        };
+
+        BitField< 0, 64, u64> hex;
+
+        BitField< 0, 16, Type> type;
+        BitField<16, 16, u64> id;
+        BitField<32,  4, u64> component_mask;
+        BitField<32, 32, u64> descriptor;
+
+        std::string GetMask() const {
+            std::string ret;
+            if (component_mask & 1) ret += "x";
+            if (component_mask & 2) ret += "y";
+            if (component_mask & 4) ret += "z";
+            if (component_mask & 8) ret += "w";
+            return ret;
+        }
+
+        std::string GetPlainName() const {
+            std::map<Type, std::string> map = {
+                { POSITION,  "out.pos"},
+                { COLOR,     "out.col"},
+                { TEXCOORD0, "out.tex0"},
+                { TEXCOORD1, "out.tex1"},
+                { TEXCOORD2, "out.tex2"},
+            };
+            auto it = map.find(type);
+            if (it != map.end())
+                return it->second;
+            else
+                return "out.unk";
+        }
+
+        std::string GetFullName() const {
+            return GetPlainName() + "." + GetMask();
+        }
+    };
+    std::vector<OutputRegisterInfo> output_register_info;
+    output_register_info.resize(dvle_header.output_register_table_size);
+    file.seekg(dvle_offset + dvle_header.output_register_table_offset);
+    for (auto& info : output_register_info) {
+        file.read((char*)&info, sizeof(OutputRegisterInfo));
+        std::cout << "Output register info:  o" << info.id.Value() << " = " << std::setw(13) << info.GetFullName() << " (" << std::hex << std::setw(16) << std::setfill('0') << (u64)info.hex << std::setfill(' ') << ")" << std::endl;
     }
 
     struct UniformInfo {
@@ -545,26 +674,55 @@ int main(int argc, char *argv[])
         const SwizzlePattern& swizzle = swizzle_patterns[2*instr.common.operand_desc_id];
 
         // TODO: Not sure if name lookup works properly, yet!
-        auto GetDestName = [&uniform_table](const decltype(instr.common.dest) dest) -> std::string {
-                               for (const auto& uniform_info : uniform_table) {
-                                   if (dest >= uniform_info.basic.reg_start &&
-                                       dest <= uniform_info.basic.reg_end &&
-                                       dest >= 0x10) {
-                                       return uniform_info.name;
+        auto GetDestName = [&](const decltype(instr.common.dest) dest, const SwizzlePattern& swizzle) -> std::string {
+                               if (dest >= 0x10) {
+                                   for (const auto& uniform_info : uniform_table) {
+                                       // TODO: Is there any point in testing for this? Might it describe temporaries?
+                                       if (dest >= uniform_info.basic.reg_start &&
+                                           dest <= uniform_info.basic.reg_end) {
+                                           return uniform_info.name;
+                                       }
                                    }
+                               } else if (dest < 0x8) {
+                                   // TODO: This one still needs some prettification in case
+                                   //       multiple output_infos describing this output register
+                                   //       are found.
+                                   std::string ret;
+                                   for (const auto& output_info : output_register_info) {
+                                       if (dest != output_info.id)
+                                           continue;
+
+                                       if (0 == (swizzle.dest_mask & output_info.component_mask))
+                                           continue;
+
+                                       // Add a vertical bar so that we have at least *some*
+                                       // indication that we hit multiple matches.
+                                       if (!ret.empty())
+                                           ret += "|";
+
+                                       ret += output_info.GetFullName();
+                                   }
+                                   if (!ret.empty())
+                                       return ret;
                                }
                                return "(?)";
                            };
-        auto GetSrc1Name = [&uniform_table](const decltype(instr.common.src1) src1) -> std::string {
+        auto GetSrc1Name = [&](const decltype(instr.common.src1) src1) -> std::string {
                                for (const auto& uniform_info : uniform_table) {
                                    if (src1 >= uniform_info.basic.reg_start &&
                                        src1 <= uniform_info.basic.reg_end) {
                                        return uniform_info.name;
                                    }
                                }
+                               // Constants and uniforms really are the same internally
+                               for (const auto& constant_info : constant_table) {
+                                   if (src1 - 0x20 == constant_info.regid) {
+                                       return "const" + std::to_string(constant_info.regid.Value());
+                                   }
+                               }
                                return "(?)";
                            };
-        auto GetSrc2Name = [&uniform_table](const decltype(instr.common.src2) src2) -> std::string {
+        auto GetSrc2Name = [&](const decltype(instr.common.src2) src2) -> std::string {
                                for (const auto& uniform_info : uniform_table) {
                                    if (src2 >= uniform_info.basic.reg_start &&
                                        src2 <= uniform_info.basic.reg_end) {
@@ -581,8 +739,8 @@ int main(int argc, char *argv[])
         case Instruction::OpCode::MOV:
             std::cout << std::setw(4) << std::right << instr.common.dest.GetRegisterName() << "." << swizzle.DestMaskToString() << "  "
                       << std::setw(4) << std::right << ((swizzle.negate ? "-" : " ") + instr.common.src1.GetRegisterName()) << "." << swizzle.SelectorToString(false) << "   "
-                      << "           " << instr.common.operand_desc_id.Value() << " unk2:" << instr.common.unk2.Value()
-                      << ";      " << GetDestName(instr.common.dest) << ",  " << GetSrc1Name(instr.common.src1) << std::endl;
+                      << "           " << instr.common.operand_desc_id.Value() << " flag:" << instr.common.unk2.Value()
+                      << ";      " << GetDestName(instr.common.dest, swizzle) << ",  " << GetSrc1Name(instr.common.src1) << std::endl;
             break;
 
         // common, uses DEST, SRC1 and SRC2:
@@ -596,12 +754,12 @@ int main(int argc, char *argv[])
                       << std::setw(4) << std::right << ((swizzle.negate ? "-" : "") + instr.common.src1.GetRegisterName()) << "." << swizzle.SelectorToString(false) << "  "
                       << std::setw(4) << std::right << instr.common.src2.GetRegisterName() << "." << swizzle.SelectorToString(true) << "   "
                       << instr.common.operand_desc_id.Value() << " flag:" << instr.common.unk2.Value()
-                      << ";      " << GetDestName(instr.common.dest) << " <- " << GetSrc1Name(instr.common.src1) << ", " << GetSrc2Name(instr.common.src2) << std::endl;
+                      << ";      " << GetDestName(instr.common.dest, swizzle) << " <- " << GetSrc1Name(instr.common.src1) << ", " << GetSrc2Name(instr.common.src2) << std::endl;
             break;
 
         case Instruction::OpCode::CALL:
-            std::cout << std::setw(4) << std::right << (int)instr.flow_control.offset_words << "  "
-                      << std::setw(4) << std::right << (int)instr.flow_control.num_instructions << " words    "
+            std::cout << "to 0x" << std::setw(4) << std::right << std::setfill('0') << 4 * instr.flow_control.offset_words << std::setfill(' ') << "  ("
+                      << std::setw(4) << std::right << (int)instr.flow_control.num_instructions << " words)    "
                       << GetLabel(instr.flow_control.offset_words) << std::endl;
             break;
 
