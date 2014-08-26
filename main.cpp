@@ -124,10 +124,10 @@ public:
             offset += filename.length() + 1;
         }
 
-        // TODO: Proper size restriction
-        swizzle_patterns.resize(1024);
-        file.seekg(dvlp_offset + dvlp_header.unk1_offset);
-        file.read((char*)swizzle_patterns.data(), 8 * dvlp_header.unk1_num_entries);
+        // TODO: Proper size restriction?
+        swizzle_info.resize(512);
+        file.seekg(dvlp_offset + dvlp_header.swizzle_info_offset);
+        file.read((char*)swizzle_info.data(), dvlp_header.swizzle_info_num_entries * sizeof(SwizzleInfo));
     }
 
     void ReadDVLE(int dvle_index) {
@@ -280,7 +280,7 @@ private:
 
     // TODO: Put this into a struct!
 public:
-    std::vector<SwizzlePattern> swizzle_patterns;
+    std::vector<SwizzleInfo> swizzle_info;
 
     std::vector<uint32_t>    dvle_offsets;
     std::vector<DVLEHeader>  dvle_headers;
@@ -391,7 +391,7 @@ int main(int argc, char *argv[])
                   << "[" << std::setw(8) << std::right << std::setfill('0') << instr.hex << "]     "
                   << std::setw(7) << std::left << std::setfill(' ') << instr.GetOpCodeName();
 
-        const SwizzlePattern& swizzle = parser.swizzle_patterns[2*instr.common.operand_desc_id];
+        const SwizzlePattern& swizzle = parser.swizzle_info[instr.common.operand_desc_id].pattern;
 
         // TODO: Not sure if name lookup works properly, yet!
 
@@ -434,8 +434,9 @@ int main(int argc, char *argv[])
 
     std::cout << std::endl << "Swizzle patterns:" << std::endl;
 
-    for (int i = 0; i < parser.GetDVLPHeader().unk1_num_entries; ++i) {
-        const auto& pattern = parser.swizzle_patterns[2*i];
+    for (int i = 0; i < parser.GetDVLPHeader().swizzle_info_num_entries; ++i) {
+        const auto& info = parser.swizzle_info[i];
+        const auto& pattern = info.pattern;
         std::cout << "(" << std::setw(3) << std::right << std::hex << i << ") " << std::setw(8) << pattern.hex << ": " << pattern.dest_mask.Value() << "   " <<
                      " " << ((pattern.hex>>4)&1) << "   " <<
                      " " << (int)pattern.src1_selector_3.Value() << " " << (int)pattern.src1_selector_2.Value() <<
@@ -444,7 +445,7 @@ int main(int argc, char *argv[])
                      " " << (int)pattern.src2_selector_3.Value() << " " << (int)pattern.src2_selector_2.Value() <<
                      " " << (int)pattern.src2_selector_1.Value() << " " << (int)pattern.src2_selector_0.Value() << "   " <<
                      " " << std::setw(3) << ((pattern.hex>>22)&0x1FF) << "   " <<
-                     " " << (int)pattern.flag.Value() << "    " << std::setw(8) << std::setfill('0') << parser.swizzle_patterns[2*i+1].hex << std::setfill(' ') << std::endl;
+                     " " << (int)pattern.flag.Value() << "    " << std::setw(8) << std::setfill('0') << info.unknown << std::setfill(' ') << std::endl;
     }
 
     return 0;

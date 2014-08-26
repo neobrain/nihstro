@@ -29,6 +29,8 @@
 
 #include <cstdint>
 
+#include "shader_bytecode.h"
+
 #pragma pack(1)
 struct DVLBHeader {
     enum : uint32_t {
@@ -51,8 +53,8 @@ struct DVLPHeader {
     uint32_t version;
     uint32_t binary_offset;  // relative to DVLP start
     uint32_t binary_size_words;
-    uint32_t unk1_offset;
-    uint32_t unk1_num_entries;
+    uint32_t swizzle_info_offset;
+    uint32_t swizzle_info_num_entries;
     uint32_t filename_symbol_offset;
 };
 static_assert(sizeof(DVLPHeader) == 0x1C, "Incorrect structure size");
@@ -101,6 +103,12 @@ struct DVLEHeader {
 
 };
 static_assert(sizeof(DVLEHeader) == 0x40, "Incorrect structure size");
+
+
+struct SwizzleInfo {
+    SwizzlePattern pattern;
+    uint32_t unknown;
+};
 
 struct ConstantInfo {
     union {
