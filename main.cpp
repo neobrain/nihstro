@@ -403,7 +403,7 @@ int main(int argc, char *argv[])
         case Instruction::OpCode::RSQ:
         case Instruction::OpCode::MOV:
             std::cout << std::setw(4) << std::right << instr.common.dest.GetRegisterName() << "." << swizzle.DestMaskToString() << "  "
-                      << std::setw(4) << std::right << ((swizzle.negate ? "-" : " ") + instr.common.src1.GetRegisterName()) << "." << swizzle.SelectorToString(false) << "   "
+                      << std::setw(4) << std::right << ((swizzle.negate_src1 ? "-" : " ") + instr.common.src1.GetRegisterName()) << "." << swizzle.SelectorToString(false) << "   "
                       << "           " << instr.common.operand_desc_id.Value() << " flag:" << instr.common.unk2.Value()
                       << ";      " << GetDestName(instr.common.dest, swizzle) << ",  " << GetSrc1Name(instr.common.src1) << std::endl;
             break;
@@ -416,7 +416,7 @@ int main(int argc, char *argv[])
         case Instruction::OpCode::MAX:
         case Instruction::OpCode::MIN:
             std::cout << std::setw(4) << std::right << instr.common.dest.GetRegisterName() << "." << swizzle.DestMaskToString() << "  "
-                      << std::setw(4) << std::right << ((swizzle.negate ? "-" : "") + instr.common.src1.GetRegisterName()) << "." << swizzle.SelectorToString(false) << "  "
+                      << std::setw(4) << std::right << ((swizzle.negate_src1 ? "-" : "") + instr.common.src1.GetRegisterName()) << "." << swizzle.SelectorToString(false) << "  "
                       << std::setw(4) << std::right << instr.common.src2.GetRegisterName() << "." << swizzle.SelectorToString(true) << "   "
                       << instr.common.operand_desc_id.Value() << " flag:" << instr.common.unk2.Value()
                       << ";      " << GetDestName(instr.common.dest, swizzle) << " <- " << GetSrc1Name(instr.common.src1) << ", " << GetSrc2Name(instr.common.src2) << std::endl;

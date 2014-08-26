@@ -98,71 +98,30 @@ union Instruction {
     union {
         BitField<0x00, 0x7, uint32_t> operand_desc_id;
 
-        struct : BitField<0x07, 0x5, uint32_t>
-        {
+        template<class BitFieldType>
+        struct SourceRegister : BitFieldType {
             enum RegisterType {
                 Input,
                 Temporary,
-                Unknown
+                FloatUniform
             };
 
             RegisterType GetRegisterType() const {
-                if (Value() < 0x10)
+                if (BitFieldType::Value() < 0x10)
                     return Input;
-                else if (Value() < 0x20)
+                else if (BitFieldType::Value() < 0x20)
                     return Temporary;
                 else
-                    return Unknown;
-            }
-
-            int GetIndex() const {
-                if (GetRegisterType() == Input)
-                    return Value();
-                else if (GetRegisterType() == Temporary)
-                    return Value() - 0x10;
-                else
-                    return Value();
-            }
-
-            std::string GetRegisterName() const {
-                std::map<RegisterType, std::string> type = {
-                    { Input, "i" },
-                    { Temporary, "t" },
-                    { Unknown, "u" }
-                };
-                return type[GetRegisterType()] + std::to_string(GetIndex());
-            }
-        } src2;
-
-        struct : BitField<0x0c, 0x7, uint32_t>
-        {
-            enum RegisterType {
-                Input,
-                Temporary,
-                FloatUniform,
-                Unknown
-            };
-
-            RegisterType GetRegisterType() const {
-                if (Value() < 0x10)
-                    return Input;
-                else if (Value() < 0x20)
-                    return Temporary;
-                else if (Value() < 0x80)
                     return FloatUniform;
-                else
-                    return Unknown;
             }
 
             int GetIndex() const {
                 if (GetRegisterType() == Input)
-                    return Value();
+                    return BitFieldType::Value();
                 else if (GetRegisterType() == Temporary)
-                    return Value() - 0x10;
+                    return BitFieldType::Value() - 0x10;
                 else if (GetRegisterType() == FloatUniform)
-                    return Value() - 0x20;
-                else
-                    return Value();
+                    return BitFieldType::Value() - 0x20;
             }
 
             std::string GetRegisterName() const {
@@ -170,11 +129,13 @@ union Instruction {
                     { Input, "i" },
                     { Temporary, "t" },
                     { FloatUniform, "f" },
-                    { Unknown, "u" }
                 };
                 return type[GetRegisterType()] + std::to_string(GetIndex());
             }
-        } src1;
+        };
+
+        SourceRegister<BitField<0x07, 0x5, uint32_t>> src2;
+        SourceRegister<BitField<0x0c, 0x7, uint32_t>> src1;
 
         BitField<0x13, 0x2, uint32_t> unk2; // 3dbrew calls this FLAG
 
@@ -282,7 +243,7 @@ union SwizzlePattern {
     // Components of "dest" that should be written to: LSB=dest.w, MSB=dest.x
     BitField< 0, 4, uint32_t> dest_mask;
 
-    BitField< 4, 1, uint32_t> negate; // negates src1
+    BitField< 4, 1, uint32_t> negate_src1;
 
     BitField< 5, 2, Selector> src1_selector_3;
     BitField< 7, 2, Selector> src1_selector_2;
