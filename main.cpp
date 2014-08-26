@@ -208,6 +208,58 @@ public:
         return instr;
     }
 
+    template<typename T>
+    std::string LookupDestName(const T& dest, const SwizzlePattern& swizzle) {
+        if (dest >= 0x10) {
+            for (const auto& uniform_info : uniform_table) {
+                // TODO: Is there any point in testing for this? Might it describe temporaries?
+                if (dest >= uniform_info.basic.reg_start &&
+                    dest <= uniform_info.basic.reg_end) {
+                    return uniform_info.name;
+                }
+            }
+        } else if (dest < 0x8) {
+            // TODO: This one still needs some prettification in case
+            //       multiple output_infos describing this output register
+            //       are found.
+            std::string ret;
+            for (const auto& output_info : output_register_info) {
+                if (dest != output_info.id)
+                    continue;
+
+                if (0 == (swizzle.dest_mask & output_info.component_mask))
+                    continue;
+
+                // Add a vertical bar so that we have at least *some*
+                // indication that we hit multiple matches.
+                if (!ret.empty())
+                    ret += "|";
+
+                ret += output_info.GetFullName();
+            }
+            if (!ret.empty())
+                return ret;
+        }
+        return "(?)";
+    }
+
+    template<class T>
+    std::string LookupSourceName(const T& source) {
+        for (const auto& uniform_info : uniform_table) {
+            if (source >= uniform_info.basic.reg_start &&
+                source <= uniform_info.basic.reg_end) {
+                return uniform_info.name;
+            }
+        }
+        // Constants and uniforms really are the same internally
+        for (const auto& constant_info : constant_table) {
+            if (source - 0x20 == constant_info.regid) {
+                return "const" + std::to_string(constant_info.regid.Value());
+            }
+        }
+        return "(?)";
+    }
+
 private:
 
     // Reads a null-terminated string from the given offset
@@ -342,64 +394,6 @@ int main(int argc, char *argv[])
         const SwizzlePattern& swizzle = parser.swizzle_patterns[2*instr.common.operand_desc_id];
 
         // TODO: Not sure if name lookup works properly, yet!
-        // TODO: Move to parsing code!
-        auto GetDestName = [&](const decltype(instr.common.dest) dest, const SwizzlePattern& swizzle) -> std::string {
-                               if (dest >= 0x10) {
-                                   for (const auto& uniform_info : parser.uniform_table) {
-                                       // TODO: Is there any point in testing for this? Might it describe temporaries?
-                                       if (dest >= uniform_info.basic.reg_start &&
-                                           dest <= uniform_info.basic.reg_end) {
-                                           return uniform_info.name;
-                                       }
-                                   }
-                               } else if (dest < 0x8) {
-                                   // TODO: This one still needs some prettification in case
-                                   //       multiple output_infos describing this output register
-                                   //       are found.
-                                   std::string ret;
-                                   for (const auto& output_info : parser.output_register_info) {
-                                       if (dest != output_info.id)
-                                           continue;
-
-                                       if (0 == (swizzle.dest_mask & output_info.component_mask))
-                                           continue;
-
-                                       // Add a vertical bar so that we have at least *some*
-                                       // indication that we hit multiple matches.
-                                       if (!ret.empty())
-                                           ret += "|";
-
-                                       ret += output_info.GetFullName();
-                                   }
-                                   if (!ret.empty())
-                                       return ret;
-                               }
-                               return "(?)";
-                           };
-        auto GetSrc1Name = [&](const decltype(instr.common.src1) src1) -> std::string {
-                               for (const auto& uniform_info : parser.uniform_table) {
-                                   if (src1 >= uniform_info.basic.reg_start &&
-                                       src1 <= uniform_info.basic.reg_end) {
-                                       return uniform_info.name;
-                                   }
-                               }
-                               // Constants and uniforms really are the same internally
-                               for (const auto& constant_info : parser.constant_table) {
-                                   if (src1 - 0x20 == constant_info.regid) {
-                                       return "const" + std::to_string(constant_info.regid.Value());
-                                   }
-                               }
-                               return "(?)";
-                           };
-        auto GetSrc2Name = [&](const decltype(instr.common.src2) src2) -> std::string {
-                               for (const auto& uniform_info : parser.uniform_table) {
-                                   if (src2 >= uniform_info.basic.reg_start &&
-                                       src2 <= uniform_info.basic.reg_end) {
-                                       return uniform_info.name;
-                                   }
-                               }
-                               return "(?)";
-                           };
 
         switch (instr.opcode) {
         // common, uses DEST and SRC1:
@@ -409,7 +403,7 @@ int main(int argc, char *argv[])
             std::cout << std::setw(4) << std::right << instr.common.dest.GetRegisterName() << "." << swizzle.DestMaskToString() << "  "
                       << std::setw(4) << std::right << ((swizzle.negate_src1 ? "-" : " ") + instr.common.src1.GetRegisterName()) << "." << swizzle.SelectorToString(false) << "   "
                       << "           " << instr.common.operand_desc_id.Value() << " flag:" << instr.common.unk2.Value()
-                      << ";      " << GetDestName(instr.common.dest, swizzle) << ",  " << GetSrc1Name(instr.common.src1) << std::endl;
+                      << ";      " << parser.LookupDestName(instr.common.dest, swizzle) << ",  " << parser.LookupSourceName(instr.common.src1) << std::endl;
             break;
 
         // common, uses DEST, SRC1 and SRC2:
@@ -423,7 +417,7 @@ int main(int argc, char *argv[])
                       << std::setw(4) << std::right << ((swizzle.negate_src1 ? "-" : "") + instr.common.src1.GetRegisterName()) << "." << swizzle.SelectorToString(false) << "  "
                       << std::setw(4) << std::right << instr.common.src2.GetRegisterName() << "." << swizzle.SelectorToString(true) << "   "
                       << instr.common.operand_desc_id.Value() << " flag:" << instr.common.unk2.Value()
-                      << ";      " << GetDestName(instr.common.dest, swizzle) << " <- " << GetSrc1Name(instr.common.src1) << ", " << GetSrc2Name(instr.common.src2) << std::endl;
+                      << ";      " << parser.LookupDestName(instr.common.dest, swizzle) << " <- " << parser.LookupSourceName(instr.common.src1) << ", " << parser.LookupSourceName(instr.common.src2) << std::endl;
             break;
 
         case Instruction::OpCode::CALL:
