@@ -101,4 +101,86 @@ struct DVLEHeader {
 
 };
 static_assert(sizeof(DVLEHeader) == 0x40, "Incorrect structure size");
+
+struct ConstantInfo {
+    union {
+        // This field is a custom extension, and hence NOT OFFICIALLY SUPPORTED
+        // It was only added to support loading citra's shader dumps until citra
+        // can convert floats to float24!
+        BitField<0, 1, uint32_t> is_float32;
+
+        BitField<16, 8, uint32_t> regid;
+        uint32_t full_first_word;
+    };
+
+    // float24 values..
+    uint32_t x;
+    uint32_t y;
+    uint32_t z;
+    uint32_t w;
+};
+
+struct LabelInfo {
+    BitField<0, 8, uint32_t> id;
+    uint32_t program_offset;
+    uint32_t unk;
+    uint32_t name_offset;
+};
+
+union OutputRegisterInfo {
+    enum Type : uint64_t {
+        POSITION = 0,
+        COLOR = 2,
+        TEXCOORD0 = 3,
+        TEXCOORD1 = 5,
+        TEXCOORD2 = 6,
+    };
+
+    BitField< 0, 64, uint64_t> hex;
+
+    BitField< 0, 16, Type> type;
+    BitField<16, 16, uint64_t> id;
+    BitField<32,  4, uint64_t> component_mask;
+    BitField<32, 32, uint64_t> descriptor;
+
+    std::string GetMask() const {
+        std::string ret;
+        if (component_mask & 1) ret += "x";
+        if (component_mask & 2) ret += "y";
+        if (component_mask & 4) ret += "z";
+        if (component_mask & 8) ret += "w";
+        return ret;
+    }
+
+    std::string GetPlainName() const {
+        std::map<Type, std::string> map = {
+            { POSITION,  "out.pos"},
+            { COLOR,     "out.col"},
+            { TEXCOORD0, "out.tex0"},
+            { TEXCOORD1, "out.tex1"},
+            { TEXCOORD2, "out.tex2"},
+        };
+        auto it = map.find(type);
+        if (it != map.end())
+            return it->second;
+        else
+            return "out.unk";
+    }
+
+    std::string GetFullName() const {
+        return GetPlainName() + "." + GetMask();
+    }
+};
+
+struct UniformInfo {
+    struct {
+        uint32_t symbol_offset;
+        union {
+            BitField< 0, 16, uint32_t> reg_start;
+            BitField<16, 16, uint32_t> reg_end; // inclusive
+        };
+    } basic;
+    std::string name;
+};
+
 #pragma pack()
