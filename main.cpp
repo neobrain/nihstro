@@ -210,15 +210,7 @@ public:
 
     template<typename T>
     std::string LookupDestName(const T& dest, const SwizzlePattern& swizzle) {
-        if (dest >= 0x10) {
-            for (const auto& uniform_info : uniform_table) {
-                // TODO: Is there any point in testing for this? Might it describe temporaries?
-                if (dest >= uniform_info.basic.reg_start &&
-                    dest <= uniform_info.basic.reg_end) {
-                    return uniform_info.name;
-                }
-            }
-        } else if (dest < 0x8) {
+        if (dest < 0x8) {
             // TODO: This one still needs some prettification in case
             //       multiple output_infos describing this output register
             //       are found.
@@ -227,7 +219,15 @@ public:
                 if (dest != output_info.id)
                     continue;
 
-                if (0 == (swizzle.dest_mask & output_info.component_mask))
+                // Only display output register name if the output components it's mapped to are
+                // actually written to.
+                // swizzle.dest_mask and output_info.component_mask use different bit order,
+                // so we can't use AND them bitwise to check this.
+                int matching_mask = 0;
+                for (int i = 0; i < 4; ++i)
+                    matching_mask |= output_info.component_mask & (swizzle.DestComponentEnabled(i) << i);
+
+                if (!matching_mask)
                     continue;
 
                 // Add a vertical bar so that we have at least *some*
@@ -239,24 +239,47 @@ public:
             }
             if (!ret.empty())
                 return ret;
+        } else if (dest.GetRegisterType() == dest.Temporary) {
+            // TODO: Not sure if uniform_info can assign names to temporary registers.
+            //       If that is the case, we should check the table for better names here.
+            std::stringstream stream;
+            stream << "temp_" << std::hex << dest.GetIndex();
+            return stream.str();
         }
         return "(?)";
     }
 
     template<class T>
     std::string LookupSourceName(const T& source) {
-        for (const auto& uniform_info : uniform_table) {
-            if (source >= uniform_info.basic.reg_start &&
-                source <= uniform_info.basic.reg_end) {
-                return uniform_info.name;
+        if (source.GetRegisterType() != source.Temporary) {
+            for (const auto& uniform_info : uniform_table) {
+                // Magic numbers are needed because uniform info registers use the
+                // range 0..0x10 for input registers and 0x10...0x70 for uniform registers,
+                // i.e. there is a "gap" at the temporary registers, for which no
+                // name can be assigned (?).
+                int off = (source.GetRegisterType() == source.Input) ? 0 : 0x10;
+
+                if (source - off >= uniform_info.basic.reg_start &&
+                    source - off <= uniform_info.basic.reg_end) {
+                    return uniform_info.name;
+                }
             }
         }
+
         // Constants and uniforms really are the same internally
         for (const auto& constant_info : constant_table) {
             if (source - 0x20 == constant_info.regid) {
-                return "const" + std::to_string(constant_info.regid.Value());
+                return "const_" + std::to_string(constant_info.regid.Value());
             }
         }
+
+        // For temporary registers, we at least print "temp_X" if no better name could be found.
+        if (source.GetRegisterType() == source.Temporary) {
+            std::stringstream stream;
+            stream << "temp_" << std::hex << source.GetIndex();
+            return stream.str();
+        }
+
         return "(?)";
     }
 
@@ -402,8 +425,8 @@ int main(int argc, char *argv[])
         case Instruction::OpCode::MOV:
             std::cout << std::setw(4) << std::right << instr.common.dest.GetRegisterName() << "." << swizzle.DestMaskToString() << "  "
                       << std::setw(4) << std::right << ((swizzle.negate_src1 ? "-" : " ") + instr.common.src1.GetRegisterName()) << "." << swizzle.SelectorToString(false) << "   "
-                      << "           " << instr.common.operand_desc_id.Value() << " flag:" << instr.common.unk2.Value()
-                      << ";      " << parser.LookupDestName(instr.common.dest, swizzle) << ",  " << parser.LookupSourceName(instr.common.src1) << std::endl;
+                      << "           " << std::setw(2) << instr.common.operand_desc_id.Value() << " flag:" << instr.common.unk2.Value()
+                      << ";      " << parser.LookupDestName(instr.common.dest, swizzle) << " <-  " << parser.LookupSourceName(instr.common.src1) << std::endl;
             break;
 
         // common, uses DEST, SRC1 and SRC2:
@@ -416,7 +439,7 @@ int main(int argc, char *argv[])
             std::cout << std::setw(4) << std::right << instr.common.dest.GetRegisterName() << "." << swizzle.DestMaskToString() << "  "
                       << std::setw(4) << std::right << ((swizzle.negate_src1 ? "-" : "") + instr.common.src1.GetRegisterName()) << "." << swizzle.SelectorToString(false) << "  "
                       << std::setw(4) << std::right << instr.common.src2.GetRegisterName() << "." << swizzle.SelectorToString(true) << "   "
-                      << instr.common.operand_desc_id.Value() << " flag:" << instr.common.unk2.Value()
+                      << std::setw(2) << instr.common.operand_desc_id.Value() << " flag:" << instr.common.unk2.Value()
                       << ";      " << parser.LookupDestName(instr.common.dest, swizzle) << " <- " << parser.LookupSourceName(instr.common.src1) << ", " << parser.LookupSourceName(instr.common.src2) << std::endl;
             break;
 
