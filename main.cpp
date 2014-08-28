@@ -239,7 +239,7 @@ public:
             }
             if (!ret.empty())
                 return ret;
-        } else if (dest.GetRegisterType() == dest.Temporary) {
+        } else if (dest.GetRegisterType() == Instruction::Temporary) {
             // TODO: Not sure if uniform_info can assign names to temporary registers.
             //       If that is the case, we should check the table for better names here.
             std::stringstream stream;
@@ -251,13 +251,13 @@ public:
 
     template<class T>
     std::string LookupSourceName(const T& source) {
-        if (source.GetRegisterType() != source.Temporary) {
+        if (source.GetRegisterType() != Instruction::Temporary) {
             for (const auto& uniform_info : uniform_table) {
                 // Magic numbers are needed because uniform info registers use the
                 // range 0..0x10 for input registers and 0x10...0x70 for uniform registers,
                 // i.e. there is a "gap" at the temporary registers, for which no
                 // name can be assigned (?).
-                int off = (source.GetRegisterType() == source.Input) ? 0 : 0x10;
+                int off = (source.GetRegisterType() == Instruction::Input) ? 0 : 0x10;
 
                 if (source - off >= uniform_info.basic.reg_start &&
                     source - off <= uniform_info.basic.reg_end) {
@@ -274,7 +274,7 @@ public:
         }
 
         // For temporary registers, we at least print "temp_X" if no better name could be found.
-        if (source.GetRegisterType() == source.Temporary) {
+        if (source.GetRegisterType() == Instruction::Temporary) {
             std::stringstream stream;
             stream << "temp_" << std::hex << source.GetIndex();
             return stream.str();
@@ -423,8 +423,8 @@ int main(int argc, char *argv[])
         case Instruction::OpCode::RCP:
         case Instruction::OpCode::RSQ:
         case Instruction::OpCode::MOV:
-            std::cout << std::setw(4) << std::right << instr.common.dest.GetRegisterName() << "." << swizzle.DestMaskToString() << "  "
-                      << std::setw(4) << std::right << ((swizzle.negate_src1 ? "-" : " ") + instr.common.src1.GetRegisterName()) << "." << swizzle.SelectorToString(false) << "   "
+            std::cout << std::setw(4) << std::right << instr.common.dest.GetName() << "." << swizzle.DestMaskToString() << "  "
+                      << std::setw(4) << std::right << ((swizzle.negate_src1 ? "-" : " ") + instr.common.src1.GetName()) << "." << swizzle.SelectorToString(false) << "   "
                       << "           " << std::setw(2) << instr.common.operand_desc_id.Value() << " flag:" << instr.common.unk2.Value()
                       << ";      " << parser.LookupDestName(instr.common.dest, swizzle) << " <-  " << parser.LookupSourceName(instr.common.src1) << std::endl;
             break;
@@ -436,9 +436,9 @@ int main(int argc, char *argv[])
         case Instruction::OpCode::MUL:
         case Instruction::OpCode::MAX:
         case Instruction::OpCode::MIN:
-            std::cout << std::setw(4) << std::right << instr.common.dest.GetRegisterName() << "." << swizzle.DestMaskToString() << "  "
-                      << std::setw(4) << std::right << ((swizzle.negate_src1 ? "-" : "") + instr.common.src1.GetRegisterName()) << "." << swizzle.SelectorToString(false) << "  "
-                      << std::setw(4) << std::right << instr.common.src2.GetRegisterName() << "." << swizzle.SelectorToString(true) << "   "
+            std::cout << std::setw(4) << std::right << instr.common.dest.GetName() << "." << swizzle.DestMaskToString() << "  "
+                      << std::setw(4) << std::right << ((swizzle.negate_src1 ? "-" : "") + instr.common.src1.GetName()) << "." << swizzle.SelectorToString(false) << "  "
+                      << std::setw(4) << std::right << instr.common.src2.GetName() << "." << swizzle.SelectorToString(true) << "   "
                       << std::setw(2) << instr.common.operand_desc_id.Value() << " flag:" << instr.common.unk2.Value()
                       << ";      " << parser.LookupDestName(instr.common.dest, swizzle) << " <- " << parser.LookupSourceName(instr.common.src1) << ", " << parser.LookupSourceName(instr.common.src2) << std::endl;
             break;

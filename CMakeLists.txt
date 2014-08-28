@@ -4,4 +4,5 @@ project(nihstro)
 
 add_definitions(-std=c++11)
 
-add_executable(nihstro main.cpp)
+add_executable(nihstro-disassemble main.cpp)
+add_executable(nihstro-assemble assembler.cpp)

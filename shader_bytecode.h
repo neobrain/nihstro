@@ -29,6 +29,7 @@
 
 #include <cstdint>
 #include <map>
+#include <stdexcept>
 #include <string>
 
 #include "bit_field.h"
@@ -83,6 +84,25 @@ union Instruction {
             return it->second;
     }
 
+    enum RegisterType {
+        Input,
+        Output,
+        Temporary,
+        FloatUniform,
+        Unknown
+    };
+
+    static std::string GetRegisterName(RegisterType type) {
+        std::map<RegisterType, std::string> map = {
+            { Input, "i" },
+            { Output, "o" },
+            { Temporary, "t" },
+            { FloatUniform, "f" },
+            { Unknown, "u" },
+        };
+        return map[type];
+    }
+
     uint32_t hex;
 
     BitField<0x1a, 0x6, OpCode> opcode;
@@ -100,16 +120,11 @@ union Instruction {
 
         template<class BitFieldType>
         struct SourceRegister : BitFieldType {
-            enum RegisterType {
-                Input,
-                Temporary,
-                FloatUniform
-            };
 
             RegisterType GetRegisterType() const {
-                if (BitFieldType::Value() < 0x10)
+                if (this->Value() < 0x10)
                     return Input;
-                else if (BitFieldType::Value() < 0x20)
+                else if (this->Value() < 0x20)
                     return Temporary;
                 else
                     return FloatUniform;
@@ -117,20 +132,27 @@ union Instruction {
 
             int GetIndex() const {
                 if (GetRegisterType() == Input)
-                    return BitFieldType::Value();
+                    return this->Value();
                 else if (GetRegisterType() == Temporary)
-                    return BitFieldType::Value() - 0x10;
+                    return this->Value() - 0x10;
                 else if (GetRegisterType() == FloatUniform)
-                    return BitFieldType::Value() - 0x20;
+                    return this->Value() - 0x20;
             }
 
-            std::string GetRegisterName() const {
-                std::map<RegisterType, std::string> type = {
-                    { Input, "i" },
-                    { Temporary, "t" },
-                    { FloatUniform, "f" },
-                };
-                return type[GetRegisterType()] + std::to_string(GetIndex());
+            void InitializeFromTypeAndIndex(RegisterType type, int index) {
+                if (type == Input)
+                    this->Assign(index);
+                else if (type == Temporary)
+                    this->Assign(index + 0x10);
+                else if (type == FloatUniform)
+                    this->Assign(index + 0x20);
+                else {
+                    // TODO: Should throw an exception or something.
+                }
+            }
+
+            std::string GetName() const {
+                return GetRegisterName(GetRegisterType()) + std::to_string(GetIndex());
             }
         };
 
@@ -141,12 +163,6 @@ union Instruction {
 
         struct : BitField<0x15, 0x5, uint32_t>
         {
-            enum RegisterType {
-                Output,
-                Temporary,
-                Unknown
-            };
-
             RegisterType GetRegisterType() const {
                 if (Value() < 0x8)
                     return Output;
@@ -158,20 +174,27 @@ union Instruction {
 
             int GetIndex() const {
                 if (GetRegisterType() == Output)
-                    return Value();
+                    return this->Value();
                 else if (GetRegisterType() == Temporary)
-                    return Value() - 0x10;
-                else
-                    return Value();
+                    return this->Value() - 0x10;
+                else // if (GetRegisterType() == FloatUniform)
+                    return this->Value() - 0x20;
             }
 
-            std::string GetRegisterName() const {
-                std::map<RegisterType, std::string> type = {
-                    { Output, "o" },
-                    { Temporary, "t" },
-                    { Unknown, "u" }
-                };
-                return type[GetRegisterType()] + std::to_string(GetIndex());
+            void InitializeFromTypeAndIndex(RegisterType type, int index) {
+                if (type == Output)
+                    this->Assign(index);
+                else if (type == Temporary)
+                    this->Assign(index + 0x10);
+                else if (type == FloatUniform)
+                    this->Assign(index + 0x20);
+                else {
+                    // TODO: Should throw an exception or something.
+                }
+            }
+
+            std::string GetName() const {
+                return GetRegisterName(GetRegisterType()) + std::to_string(GetIndex());
             }
         } dest;
     } common;
@@ -209,6 +232,32 @@ union SwizzlePattern {
         return selectors[comp];
     }
 
+    void SetSelectorSrc1(int comp, Selector value) {
+        if (comp == 0)
+            src1_selector_0 = value;
+        else if (comp == 1)
+            src1_selector_1 = value;
+        else if (comp == 2)
+            src1_selector_2 = value;
+        else if (comp == 3)
+            src1_selector_3 = value;
+        else
+            throw std::out_of_range("comp needs to be smaller than 4");
+    }
+
+    void SetSelectorSrc2(int comp, Selector value) {
+        if (comp == 0)
+            src2_selector_0 = value;
+        else if (comp == 1)
+            src2_selector_1 = value;
+        else if (comp == 2)
+            src2_selector_2 = value;
+        else if (comp == 3)
+            src2_selector_3 = value;
+        else
+            throw std::out_of_range("comp needs to be smaller than 4");
+    }
+
     std::string SelectorToString(bool src2) const {
         std::map<Selector, std::string> map = {
             { Selector::x, "x" },
@@ -223,8 +272,16 @@ union SwizzlePattern {
         return ret;
     }
 
-    bool DestComponentEnabled(int i) const {
+    bool DestComponentEnabled(unsigned int i) const {
+        if (i >= 4)
+            throw std::out_of_range("index needs to be smaller than 4");
+
         return (dest_mask & (0x8 >> i));
+    }
+
+    void SetDestComponentEnabled(unsigned int i, bool enabled) {
+        int mask = 0xffff & (0x8 >> i);
+        dest_mask = (dest_mask & ~mask) | (enabled * mask);
     }
 
     std::string DestMaskToString() const {
