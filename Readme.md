@@ -5,7 +5,9 @@ nihstro is a collection of tools for 3DS vertex shaders targeted at homebrew dev
 This project is released under a three-clause BSD license, for details see the license.txt.
 
 ## Status
-The application itself works stable and very reliably. Basic arithmetic in shaders can be disassembled just fine, however any more advanced instructions (e.g. flow control) have not been implemented so far.
+The shader assembler is still in its infancy and doesn't work for anything but simple shaders limited to basic arithmetic. However, if working with plain registers (no variables, no preprocessor) is sufficient for you, it should already be good enough for you.
+
+The disassembler is stable and works reliably. Basic arithmetic in shaders can be disassembled just fine, however any more advanced instructions (e.g. flow control) have not been implemented so far, and hence will be printed as unknown instructions.
 
 ## Building
 A compiler supporting C++11 is required. You will also need CMake to generate build files, however it is simple enough to compile the source code manually. If you want to use the assembler, you will also need to have `boost::spirit` installed.
