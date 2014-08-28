@@ -61,35 +61,23 @@ union Instruction {
         CMP   = 0x2E,
     };
 
-    std::string GetOpCodeName() const {
-        std::map<OpCode, std::string> map = {
-            { OpCode::ADD, "ADD" },
-            { OpCode::DP3, "DP3" },
-            { OpCode::DP4, "DP4" },
-            { OpCode::MUL, "MUL" },
-            { OpCode::MAX, "MAX" },
-            { OpCode::MIN, "MIN" },
-            { OpCode::RCP, "RCP" },
-            { OpCode::RSQ, "RSQ" },
-            { OpCode::MOV, "MOV" },
-            { OpCode::RET, "RET" },
-            { OpCode::FLUSH, "FLS" },
-            { OpCode::CALL, "CALL" },
-            { OpCode::CMP, "CMP" },
-        };
-        auto it = map.find(opcode);
-        if (it == map.end())
-            return std::string("UNK") + std::to_string(static_cast<int>(opcode.Value()));
-        else
-            return it->second;
-    }
-
     enum RegisterType {
         Input,
         Output,
         Temporary,
         FloatUniform,
         Unknown
+    };
+
+    enum class OpCodeType {
+        CommonLong,  // two arguments
+        CommonShort, // one argument
+        Unknown
+    };
+
+    struct OpCodeInfo {
+        OpCodeType type;
+        std::string name;
     };
 
     static std::string GetRegisterName(RegisterType type) {
@@ -105,7 +93,30 @@ union Instruction {
 
     uint32_t hex;
 
-    BitField<0x1a, 0x6, OpCode> opcode;
+    struct : BitField<0x1a, 0x6, OpCode> {
+        OpCodeInfo GetInfo() const {
+            std::map<OpCode, OpCodeInfo> map = {
+                { OpCode::ADD,   { OpCodeType::CommonLong,  "ADD"  } },
+                { OpCode::DP3,   { OpCodeType::CommonLong,  "DP3"  } },
+                { OpCode::DP4,   { OpCodeType::CommonLong,  "DP4"  } },
+                { OpCode::MUL,   { OpCodeType::CommonLong,  "MUL"  } },
+                { OpCode::MAX,   { OpCodeType::CommonLong,  "MAX"  } },
+                { OpCode::MIN,   { OpCodeType::CommonLong,  "MIN"  } },
+                { OpCode::RCP,   { OpCodeType::CommonShort, "RCP"  } },
+                { OpCode::RSQ,   { OpCodeType::CommonShort, "RSQ"  } },
+                { OpCode::MOV,   { OpCodeType::CommonShort, "MOV"  } },
+                { OpCode::RET,   { OpCodeType::Unknown,     "RET"  } },
+                { OpCode::FLUSH, { OpCodeType::Unknown,     "FLS"  } },
+                { OpCode::CALL,  { OpCodeType::Unknown,     "CALL" } },
+                { OpCode::CMP,   { OpCodeType::Unknown,     "CMP"  } },
+            };
+            auto it = map.find(*this);
+            if (it == map.end())
+                return { OpCodeType::Unknown, std::string("UNK") + std::to_string(static_cast<int>(this->Value())) };
+            else
+                return it->second;
+        }
+    } opcode;
 
     // General notes:
     //

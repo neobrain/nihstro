@@ -43,9 +43,20 @@ struct AssemblyParser : qi::grammar<Iterator, InstructionVariant(), AssemblySkip
 
     AssemblyParser() : AssemblyParser::base_type(start) {
         // Setup symbol table
-        opcodes.add( "add", Instruction::OpCode::ADD )
-                   ( "mul", Instruction::OpCode::MUL )
-                   ( "mov", Instruction::OpCode::MOV );
+        opcodes.add
+                   ( "add",   Instruction::OpCode::ADD   )
+                   ( "dp3",   Instruction::OpCode::DP3   )
+                   ( "dp4",   Instruction::OpCode::DP4   )
+                   ( "mul",   Instruction::OpCode::MUL   )
+                   ( "max",   Instruction::OpCode::MAX   )
+                   ( "min",   Instruction::OpCode::MIN   )
+                   ( "rcp",   Instruction::OpCode::RCP   )
+                   ( "rsq",   Instruction::OpCode::RSQ   )
+                   ( "mov",   Instruction::OpCode::MOV   )
+                   ( "ret",   Instruction::OpCode::RET   )
+                   ( "flush", Instruction::OpCode::FLUSH )
+                   ( "call",  Instruction::OpCode::CALL  )
+                   ( "cmp",   Instruction::OpCode::CMP   );
 
         register_prefixes.add( "i", Instruction::Input)
                              ( "o", Instruction::Output)
@@ -68,7 +79,7 @@ struct AssemblyParser : qi::grammar<Iterator, InstructionVariant(), AssemblySkip
                      ( "xyz", 1 | 2 | 4 | 8 );
 
         // Setup rules
-        identifier = qi::lexeme[+(qi::char_("a-zA-Z")) >> -+qi::char_("0-9")];
+        identifier = qi::lexeme[+(qi::char_("a-zA-Z_")) >> -+qi::char_("0-9")];
 
         auto label = identifier >> qi::lit(':');
 
@@ -99,6 +110,8 @@ int main(int argc, char* argv[])
         return 1;
     }
 
+    try {
+
     std::string output_filename = argv[1];
     std::string input_filename = argv[2];
 
@@ -125,6 +138,17 @@ int main(int argc, char* argv[])
     std::vector<Instruction> instructions;
     std::vector<SwizzlePattern> swizzle_patterns;
 
+    struct CustomLabelInfo {
+        uint32_t program_offset;
+        uint32_t symbol_table_index;
+    };
+
+    std::vector<CustomLabelInfo> label_table;
+
+    std::vector<std::string> symbol_table;
+
+    uint32_t program_write_offset = 0;
+
     do {
         InstructionVariant instr;
 
@@ -135,44 +159,55 @@ int main(int argc, char* argv[])
             using boost::fusion::at_c;
 
             if (instr.which() == 0) {
-                // TODO: Keep label table
+                std::string label_symbol = boost::get<SequenceLabel>(instr);
+
+                auto it = std::find(symbol_table.begin(), symbol_table.end(), label_symbol);
+                if (it != symbol_table.end())
+                    throw "Label \"" + label_symbol + "\" already defined in symbol table";
+
+                symbol_table.push_back(label_symbol);
+                uint32_t symbol_table_index = symbol_table.size() - 1;
+
+                CustomLabelInfo label_info = { program_write_offset, symbol_table_index };
+                label_table.push_back(label_info);
             } else if (instr.which() == 1) {
                 const auto& seqinstr = boost::get<SequenceInstruction>(instr);
 
                 Instruction shinst;
                 shinst.hex = 0;
-                shinst.opcode = at_c<0>(seqinstr);
+                shinst.opcode.Assign(at_c<0>(seqinstr));
                 std::vector<RegisterWithIndex> regs_with_index = at_c<1>(seqinstr);
                 int num_args = regs_with_index.size();;
-                switch (shinst.opcode) {
-                    case Instruction::OpCode::ADD:
-                    case Instruction::OpCode::DP3:
-                    case Instruction::OpCode::DP4:
-                    case Instruction::OpCode::MUL:
+                switch (shinst.opcode.GetInfo().type) {
+                    case Instruction::OpCodeType::CommonLong:
+                    case Instruction::OpCodeType::CommonShort:
                     {
-                        if (num_args < 3) {
-                            std::stringstream stream;
-                            stream << "Incorrect number of arguments. Expected " << 3 << ", got " << num_args;
-                            throw stream.str();
+                        const int num_inputs = (shinst.opcode.GetInfo().type == Instruction::OpCodeType::CommonLong) ?
+                                               2 : 1;
+                        if (num_args < num_inputs + 1)
+                            throw "Incorrect number of arguments. Expected " + std::to_string(num_inputs + 1) + ", got " + std::to_string(num_args);
+
+                        int src2_mask = 0;
+                        if (num_inputs > 1) {
+                            if (at_c<0>(regs_with_index[1]) == Instruction::FloatUniform &&
+                                at_c<0>(regs_with_index[2]) == Instruction::FloatUniform) {
+                                throw "Not more than one input register may be a floating point uniform";
+                            }
+
+                            // If second argument is a floating point register, swap it to first place
+                            if (at_c<0>(regs_with_index[2]) == Instruction::FloatUniform) {
+                                boost::swap(regs_with_index[1], regs_with_index[2]);
+                            }
+
+                            shinst.common.src2.InitializeFromTypeAndIndex(at_c<0>(regs_with_index[2]), at_c<1>(regs_with_index[2]));
+                            src2_mask = (at_c<2>(regs_with_index[2]) == boost::none) ? 0xF : *at_c<2>(regs_with_index[2]);
                         }
-
-                        if (at_c<0>(regs_with_index[1]) == Instruction::FloatUniform &&
-                            at_c<0>(regs_with_index[2]) == Instruction::FloatUniform)
-                            throw "Not more than one input register may be a floating point uniform";
-
-                        // If second argument is a floating point register, swap it to first place
-                        if (at_c<0>(regs_with_index[2]) == Instruction::FloatUniform) {
-                            boost::swap(regs_with_index[1], regs_with_index[2]);
-                        }
-
                         shinst.common.dest.InitializeFromTypeAndIndex(at_c<0>(regs_with_index[0]), at_c<1>(regs_with_index[0]));
-
                         shinst.common.src1.InitializeFromTypeAndIndex(at_c<0>(regs_with_index[1]), at_c<1>(regs_with_index[1]));
-                        shinst.common.src2.InitializeFromTypeAndIndex(at_c<0>(regs_with_index[2]), at_c<1>(regs_with_index[2]));
-                        // TODO: Swizzle pattern index!
+
+                        // If no swizzler have been specified, use .xyzw
                         int dest_mask_inverse = (at_c<2>(regs_with_index[0]) == boost::none) ? 0xF : *at_c<2>(regs_with_index[0]);
                         int src1_mask         = (at_c<2>(regs_with_index[1]) == boost::none) ? 0xF : *at_c<2>(regs_with_index[1]);
-                        int src2_mask         = (at_c<2>(regs_with_index[2]) == boost::none) ? 0xF : *at_c<2>(regs_with_index[2]);
 
                         auto MaskBitSet = [](int i, int mask) {
                             return (mask >> i) & 1;
@@ -183,12 +218,13 @@ int main(int argc, char* argv[])
                                  + MaskBitSet(2, mask) + MaskBitSet(3, mask);
                         };
 
-                        if (GetNumComponentsFromMask(dest_mask_inverse) != GetNumComponentsFromMask(src1_mask) &&
-                            GetNumComponentsFromMask(src1_mask) != GetNumComponentsFromMask(src2_mask)) {
+                        if (GetNumComponentsFromMask(dest_mask_inverse) != GetNumComponentsFromMask(src1_mask) ||
+                            (num_inputs > 1 && GetNumComponentsFromMask(src1_mask) != GetNumComponentsFromMask(src2_mask))) {
                             throw "Input registers need to use the same number of components as the output register!"
                                   + std::string("(dest: ") + std::to_string(GetNumComponentsFromMask(dest_mask_inverse)) + " components, "
-                                  + std::string("src1: ") + std::to_string(GetNumComponentsFromMask(src1_mask)) + " components, "
-                                  + std::string("src2: ") + std::to_string(GetNumComponentsFromMask(src2_mask)) + " components)";
+                                  + std::string("src1: ") + std::to_string(GetNumComponentsFromMask(src1_mask)) + " components"
+                                  + ((num_inputs > 1) ? std::string(", src2: ") + std::to_string(GetNumComponentsFromMask(src2_mask)) + " components)"
+                                                      : std::string(")"));
                         }
 
                         auto SourceMaskToSelectorVector = [&MaskBitSet](int mask) {
@@ -217,7 +253,8 @@ int main(int argc, char* argv[])
                                                             };
 
                                 swizzle_pattern.SetSelectorSrc1(i, SourceMaskToSelectorVector(src1_mask)[active_component]);
-                                swizzle_pattern.SetSelectorSrc2(i, SourceMaskToSelectorVector(src2_mask)[active_component]);
+                                if (num_inputs > 1)
+                                    swizzle_pattern.SetSelectorSrc2(i, SourceMaskToSelectorVector(src2_mask)[active_component]);
 
                                 active_component++;
                             }
@@ -238,27 +275,33 @@ int main(int argc, char* argv[])
                         break;
                     }
 
-/*                    case Instruction::OpCode::MOV:
-                        if (num_args < 2) {
-                            std::stringstream stream;
-                            stream << "Incorrect number of arguments. Expected " << 2 << ", got " << num_args;
-                            throw stream.str();
-                        }
-
-                        shinst.common.dest.InitializeFromTypeAndIndex(at_c<0>(regs_with_index[0]), at_c<1>(regs_with_index[0]));
-                        shinst.common.src1.InitializeFromTypeAndIndex(at_c<0>(regs_with_index[1]), at_c<1>(regs_with_index[1]));
-                        break;*/
-
                     default:
+						throw "Unknown instruction encountered";
                         break;
                 }
-
+                ++program_write_offset;
             }
         } else {
             throw "Invalid token found: " + std::to_string(begin - input_code.begin());
         }
     } while (begin != input_code.end());
 
+    auto GetSymbolTableEntryByteOffset = [&symbol_table](int index) {
+        int offset = 0;
+        for (int i = 0; i < index; ++i) {
+            offset += symbol_table[i].length() + 1;
+        }
+        return offset;
+    };
+
+    uint32_t main_offset = [&]() {
+                               for (auto& label : label_table) {
+                                   if ("main" == symbol_table[label.symbol_table_index]) {
+                                       return GetSymbolTableEntryByteOffset(label.symbol_table_index);
+                                   }
+                               }
+                               throw "No main label specified";
+                           }();
 
     struct StuffToWrite {
         uint8_t* pointer;
@@ -299,12 +342,26 @@ int main(int argc, char* argv[])
         QueueForWriting((uint8_t*)&dummy, sizeof(dummy));
     }
 
-//    dvle.main_offset_words = main_offset;
-    dvle.main_offset_words = 0;
-/*    dvle.output_register_table_offset = write_offset - dvlb.dvle_offset;
-    dvle.output_register_table_size = output_info_table.size();
-    QueueForWriting((uint8_t*)output_info_table.data(), output_info_table.size() * sizeof(OutputRegisterInfo));
-*/
+    dvle.main_offset_words = main_offset;
+
+    dvle.label_table_offset = write_offset - dvlb.dvle_offset;
+    dvle.label_table_size = label_table.size();
+    std::vector<LabelInfo> final_label_table;
+    for (auto& label : label_table) {
+        LabelInfo info;
+        info.id = 0; // Not sure what this should be
+        info.program_offset = label.program_offset;
+        info.unk = 0; // Not sure what this should be
+        info.name_offset = GetSymbolTableEntryByteOffset(label.symbol_table_index);
+        final_label_table.push_back(info);
+
+        QueueForWriting((uint8_t*)&final_label_table.back(), sizeof(LabelInfo));
+    }
+
+    dvle.symbol_table_offset = write_offset - dvlb.dvle_offset;;
+    dvle.symbol_table_size = GetSymbolTableEntryByteOffset(symbol_table.size() - 1) + (symbol_table.back().length() + 1);
+    for (auto& symbol : symbol_table)
+        QueueForWriting((uint8_t*)symbol.c_str(), symbol.length() + 1);
 
     // Write data to file
     static int dump_index = 0;
@@ -313,4 +370,14 @@ int main(int argc, char* argv[])
     for (auto& chunk : writing_queue) {
         file.write((char*)chunk.pointer, chunk.size);
     }
+
+    } catch(const std::string& err) {
+        std::cout << "Error: " << err << std::endl;
+        return 1;
+    } catch(const char* err) {
+        std::cout << "Error: " << err << std::endl;
+        return 1;
+    }
+
+    return 0;
 }

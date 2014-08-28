@@ -412,7 +412,7 @@ int main(int argc, char *argv[])
 
         std::cout << std::setw(8) << std::right << std::setfill('0') << 4*word << " "
                   << "[" << std::setw(8) << std::right << std::setfill('0') << instr.hex << "]     "
-                  << std::setw(7) << std::left << std::setfill(' ') << instr.GetOpCodeName();
+                  << std::setw(7) << std::left << std::setfill(' ') << instr.opcode.GetInfo().name;
 
         const SwizzlePattern& swizzle = parser.swizzle_info[instr.common.operand_desc_id].pattern;
 
