@@ -23,10 +23,81 @@ struct AssemblySkipper : public qi::grammar<Iterator> {
     qi::rule<Iterator> skip;
 };
 
+
+struct InputSwizzlerMask {
+    int num_components;
+
+    enum Component : uint8_t {
+        x = 0,
+        y = 1,
+        z = 2,
+        w = 3,
+    };
+    Component components[4];
+
+    static InputSwizzlerMask FullMask() {
+        return { 4, {x,y,z,w} };
+    }
+
+    bool operator == (const InputSwizzlerMask& oth) const {
+        return 0 == memcmp(this, &oth, sizeof(InputSwizzlerMask));
+    }
+};
+
+struct DestSwizzlerMask {
+    DestSwizzlerMask(const InputSwizzlerMask& input) : component_set{false, false, false, false} {
+        for (InputSwizzlerMask::Component comp : {InputSwizzlerMask::x, InputSwizzlerMask::y,
+                                                  InputSwizzlerMask::z, InputSwizzlerMask::w}) {
+            for (int i = 0; i < input.num_components; ++i) {
+                if (comp == input.components[i]) {
+                    component_set[comp] = true;
+                }
+            }
+        }
+    }
+
+    bool component_set[4];
+};
+
+struct SourceSwizzlerMask {
+
+    // Generate source mask according to the layout given by the destination mask
+    // E.g. the source swizzle pattern used by the instruction "mov o0.zw, t0.xy" will
+    // be {(undefined),(undefined),x,y} rather than {x,y,(undefined),(undefined)}.
+    static SourceSwizzlerMask AccordingToDestMask(const InputSwizzlerMask& input, const DestSwizzlerMask& dest) {
+        SourceSwizzlerMask ret = {Unspecified, Unspecified, Unspecified, Unspecified };
+
+        int active_component = 0;
+        for (int i = 0; i < 4; ++i)
+            if (dest.component_set[i])
+                ret.components[i] = static_cast<Component>(input.components[active_component++]);
+
+        return ret;
+    }
+
+    static SourceSwizzlerMask Expand(const InputSwizzlerMask& input) {
+        SourceSwizzlerMask ret = {Unspecified, Unspecified, Unspecified, Unspecified };
+
+        for (int i = 0; i < input.num_components; ++i)
+            ret.components[i] = static_cast<Component>(input.components[i]);
+
+        return ret;
+    }
+
+    enum Component : uint8_t {
+        x = 0,
+        y = 1,
+        z = 2,
+        w = 3,
+        Unspecified
+    };
+    Component components[4];
+};
+
 // Token sequence definitions
-using RegisterWithIndex = boost::fusion::vector<Instruction::RegisterType, // input/output/uniform...
-                                                int,                       // index
-                                                boost::optional<int>       // swizzle mask
+using RegisterWithIndex = boost::fusion::vector<Instruction::RegisterType,         // input/output/uniform...
+                                                int,                               // index
+                                                boost::optional<InputSwizzlerMask> // swizzle mask
                                                >;
 
 using SequenceLabel = std::string;
@@ -63,27 +134,29 @@ struct AssemblyParser : qi::grammar<Iterator, InstructionVariant(), AssemblySkip
                              ( "t", Instruction::Temporary)
                              ( "f", Instruction::FloatUniform);
 
-        swizzlers.add( "x",    1 )
-                     ( "y",    2 )
-                     ( "z",    4 )
-                     ( "w",    8 )
-                     ( "xy",   1 | 2 )
-                     ( "xz",   1 | 4 )
-                     ( "xw",   1 | 8 )
-                     ( "yz",   2 | 4 )
-                     ( "yw",   2 | 8 )
-                     ( "zw",   4 | 8 )
-                     ( "xyz",  1 | 2 | 4 )
-                     ( "xyw",  1 | 2 | 8 )
-                     ( "yzw",  2 | 4 | 8 )
-                     ( "xyzw", 1 | 2 | 4 | 8 );
+        // TODO: Might want to change to only have "x", "y", "z" and "w"
+        swizzlers.add( "x",    {1, {InputSwizzlerMask::x}} )
+                     ( "y",    {1, {InputSwizzlerMask::y}} )
+                     ( "z",    {1, {InputSwizzlerMask::z}} )
+                     ( "w",    {1, {InputSwizzlerMask::w}} )
+                     ( "xy",   {2, {InputSwizzlerMask::x,InputSwizzlerMask::y}} )
+                     ( "xz",   {2, {InputSwizzlerMask::x,InputSwizzlerMask::z}} )
+                     ( "xw",   {2, {InputSwizzlerMask::x,InputSwizzlerMask::w}} )
+                     ( "yz",   {2, {InputSwizzlerMask::y,InputSwizzlerMask::z}} )
+                     ( "yw",   {2, {InputSwizzlerMask::y,InputSwizzlerMask::w}} )
+                     ( "zw",   {2, {InputSwizzlerMask::z,InputSwizzlerMask::w}} )
+                     ( "xyz",  {3, {InputSwizzlerMask::x,InputSwizzlerMask::y,InputSwizzlerMask::z}} )
+                     ( "xyw",  {3, {InputSwizzlerMask::x,InputSwizzlerMask::y,InputSwizzlerMask::w}} )
+                     ( "xzw",  {3, {InputSwizzlerMask::x,InputSwizzlerMask::z,InputSwizzlerMask::w}} )
+                     ( "yzw",  {3, {InputSwizzlerMask::y,InputSwizzlerMask::z,InputSwizzlerMask::w}} )
+                     ( "xyzw", {4, {InputSwizzlerMask::x,InputSwizzlerMask::y,InputSwizzlerMask::z,InputSwizzlerMask::w}} );
 
         // Setup rules
         identifier = qi::lexeme[+(qi::char_("a-zA-Z_")) >> -+qi::char_("0-9")];
 
         auto label = identifier >> qi::lit(':');
 
-		register_with_index = qi::lexeme[(register_prefixes >> qi::int_) >> -('.' >> swizzlers)];
+        register_with_index = qi::lexeme[(register_prefixes >> qi::int_) >> -('.' >> swizzlers)];
         auto instr = qi::no_case[qi::lexeme[opcodes]] >> (register_with_index % ',');
 
         start %= label | instr;
@@ -91,7 +164,7 @@ struct AssemblyParser : qi::grammar<Iterator, InstructionVariant(), AssemblySkip
 
     qi::symbols<char, Instruction::OpCode>       opcodes;
     qi::symbols<char, Instruction::RegisterType> register_prefixes;
-    qi::symbols<char, int>                       swizzlers;
+    qi::symbols<char, InputSwizzlerMask>         swizzlers;
 
     qi::rule<Iterator, std::string(),        Skipper> identifier;
     qi::rule<Iterator, RegisterWithIndex(),  Skipper> register_with_index;
@@ -179,15 +252,18 @@ int main(int argc, char* argv[])
                 std::vector<RegisterWithIndex> regs_with_index = at_c<1>(seqinstr);
                 int num_args = regs_with_index.size();;
                 switch (shinst.opcode.GetInfo().type) {
-                    case Instruction::OpCodeType::CommonLong:
-                    case Instruction::OpCodeType::CommonShort:
+                    case Instruction::OpCodeType::Arithmetic:
                     {
-                        const int num_inputs = (shinst.opcode.GetInfo().type == Instruction::OpCodeType::CommonLong) ?
-                                               2 : 1;
+                        const int num_inputs = shinst.opcode.GetInfo().num_arguments - 1;
                         if (num_args < num_inputs + 1)
                             throw "Incorrect number of arguments. Expected " + std::to_string(num_inputs + 1) + ", got " + std::to_string(num_args);
 
-                        int src2_mask = 0;
+                        // If no swizzler have been specified, use .xyzw - compile errors triggered by this are intended! (accessing subvectors should be done explicitly)
+                        InputSwizzlerMask input_dest_mask = (at_c<2>(regs_with_index[0]) == boost::none)
+                                                            ? InputSwizzlerMask::FullMask()
+                                                            : *at_c<2>(regs_with_index[0]);
+                        InputSwizzlerMask input_mask_src1;
+                        InputSwizzlerMask input_mask_src2;
                         if (num_inputs > 1) {
                             if (at_c<0>(regs_with_index[1]) == Instruction::FloatUniform &&
                                 at_c<0>(regs_with_index[2]) == Instruction::FloatUniform) {
@@ -200,66 +276,63 @@ int main(int argc, char* argv[])
                             }
 
                             shinst.common.src2.InitializeFromTypeAndIndex(at_c<0>(regs_with_index[2]), at_c<1>(regs_with_index[2]));
-                            src2_mask = (at_c<2>(regs_with_index[2]) == boost::none) ? 0xF : *at_c<2>(regs_with_index[2]);
+                            input_mask_src2 = (at_c<2>(regs_with_index[2]) == boost::none) ? InputSwizzlerMask::FullMask() : *at_c<2>(regs_with_index[2]);
                         }
+                        input_mask_src1 = (at_c<2>(regs_with_index[1]) == boost::none) ? InputSwizzlerMask::FullMask() : *at_c<2>(regs_with_index[1]);
+
                         shinst.common.dest.InitializeFromTypeAndIndex(at_c<0>(regs_with_index[0]), at_c<1>(regs_with_index[0]));
                         shinst.common.src1.InitializeFromTypeAndIndex(at_c<0>(regs_with_index[1]), at_c<1>(regs_with_index[1]));
 
-                        // If no swizzler have been specified, use .xyzw
-                        int dest_mask_inverse = (at_c<2>(regs_with_index[0]) == boost::none) ? 0xF : *at_c<2>(regs_with_index[0]);
-                        int src1_mask         = (at_c<2>(regs_with_index[1]) == boost::none) ? 0xF : *at_c<2>(regs_with_index[1]);
+                        const bool is_dot_product = (shinst.opcode == Instruction::OpCode::DP3 ||
+                                                     shinst.opcode == Instruction::OpCode::DP4);
 
-                        auto MaskBitSet = [](int i, int mask) {
-                            return (mask >> i) & 1;
-                        };
+                        if (is_dot_product) {
+                            int expected_input_length = (shinst.opcode == Instruction::OpCode::DP3) ? 3 : 4;
+                            if (input_mask_src1.num_components != expected_input_length ||
+                                input_mask_src2.num_components != expected_input_length)
+                                throw "Input registers for dot product instructions need to use proper number of components";
 
-                        auto GetNumComponentsFromMask = [&MaskBitSet](int mask) {
-                            return MaskBitSet(0, mask) + MaskBitSet(1, mask)
-                                 + MaskBitSet(2, mask) + MaskBitSet(3, mask);
-                        };
+                            // NOTE: dest can use any number of components for dot products
 
-                        if (GetNumComponentsFromMask(dest_mask_inverse) != GetNumComponentsFromMask(src1_mask) ||
-                            (num_inputs > 1 && GetNumComponentsFromMask(src1_mask) != GetNumComponentsFromMask(src2_mask))) {
-                            throw "Input registers need to use the same number of components as the output register!"
-                                  + std::string("(dest: ") + std::to_string(GetNumComponentsFromMask(dest_mask_inverse)) + " components, "
-                                  + std::string("src1: ") + std::to_string(GetNumComponentsFromMask(src1_mask)) + " components"
-                                  + ((num_inputs > 1) ? std::string(", src2: ") + std::to_string(GetNumComponentsFromMask(src2_mask)) + " components)"
-                                                      : std::string(")"));
-                        }
-
-                        auto SourceMaskToSelectorVector = [&MaskBitSet](int mask) {
-                            std::vector<SwizzlePattern::Selector> ret;
-
-                            for (int i = 0; i < 4; ++i)
-                                if (MaskBitSet(i, mask))
-                                    ret.push_back(static_cast<SwizzlePattern::Selector>(i));
-
-                            return ret;
-                        };
-
-                        SwizzlePattern swizzle_pattern;
-                        swizzle_pattern.hex = 0;
-                        int active_component = 0;
-                        for (int i = 0; i < 4; ++i) {
-                            if (dest_mask_inverse & (1 << i)) {
-                                swizzle_pattern.SetDestComponentEnabled(i, true);
-
-                                auto GetSrcComponentIndex = [&MaskBitSet, &active_component](int mask) {
-                                                                int comp = active_component;
-                                                                for (int i = 0; i < 4; ++i)
-                                                                    if (MaskBitSet(i, mask))
-                                                                        if (comp-- == 0) // post-increment intended
-                                                                            return i;
-                                                            };
-
-                                swizzle_pattern.SetSelectorSrc1(i, SourceMaskToSelectorVector(src1_mask)[active_component]);
-                                if (num_inputs > 1)
-                                    swizzle_pattern.SetSelectorSrc2(i, SourceMaskToSelectorVector(src2_mask)[active_component]);
-
-                                active_component++;
+                        } else {
+                            // Generic syntax checking.. we likely want to have more special cases in the future!
+                            if (input_dest_mask.num_components != input_mask_src1.num_components ||
+                                (num_inputs > 1 && input_mask_src1.num_components != input_mask_src2.num_components)) {
+                                throw "Input registers need to use the same number of components as the output register!"
+                                      + std::string("(dest: ") + std::to_string(input_dest_mask.num_components) + " components, "
+                                      + std::string("src1: ") + std::to_string(input_mask_src1.num_components) + " components"
+                                      + ((num_inputs > 1) ? std::string(", src2: ") + std::to_string(input_mask_src2.num_components) + " components)"
+                                                          : std::string(")"));
                             }
                         }
-                        // TODO: support other fields in SwizzlePattern!
+
+                        // Build swizzle patterns
+                        SwizzlePattern swizzle_pattern;
+                        swizzle_pattern.hex = 0;
+
+                        DestSwizzlerMask dest_mask{input_dest_mask};
+                        SourceSwizzlerMask mask_src1;
+                        SourceSwizzlerMask mask_src2;
+                        if (is_dot_product) {
+                            mask_src1 = SourceSwizzlerMask::Expand(input_mask_src1);
+                            mask_src2 = SourceSwizzlerMask::Expand(input_mask_src2);
+                        } else {
+                            mask_src1 = SourceSwizzlerMask::AccordingToDestMask(input_mask_src1, dest_mask);
+                            mask_src2 = SourceSwizzlerMask::AccordingToDestMask(input_mask_src2, dest_mask);
+                        }
+
+                        for (int i = 0, active_component = 0; i < 4; ++i) {
+                            if (dest_mask.component_set[i])
+                                swizzle_pattern.SetDestComponentEnabled(i, true);
+
+                            if (mask_src1.components[i] != SourceSwizzlerMask::Unspecified)
+                                swizzle_pattern.SetSelectorSrc1(i, static_cast<SwizzlePattern::Selector>(mask_src1.components[i]));
+
+                            if (num_inputs > 1 && mask_src2.components[i] != SourceSwizzlerMask::Unspecified)
+                                swizzle_pattern.SetSelectorSrc2(i, static_cast<SwizzlePattern::Selector>(mask_src2.components[i]));
+                        }
+
+                        // TODO: support other fields in SwizzlePattern (e.g. negate_src1)
                         auto it = std::find_if(swizzle_patterns.begin(), swizzle_patterns.end(),
                                                [&swizzle_pattern](const SwizzlePattern& val) { return val.hex == swizzle_pattern.hex; });
                         if (it == swizzle_patterns.end()) {
@@ -267,16 +340,16 @@ int main(int argc, char* argv[])
                             it = swizzle_patterns.end() - 1;
 
                             if (swizzle_patterns.size() > 127)
-                                throw "Maximum number of swizzle patterns 127 has been exhausted";
+                                throw "Limit of 127 swizzle patterns has been exhausted";
                         }
                         shinst.common.operand_desc_id = it - swizzle_patterns.begin();
 
-						instructions.push_back(shinst);
+                        instructions.push_back(shinst);
                         break;
                     }
 
                     default:
-						throw "Unknown instruction encountered";
+                        throw "Unknown instruction encountered";
                         break;
                 }
                 ++program_write_offset;

@@ -70,13 +70,13 @@ union Instruction {
     };
 
     enum class OpCodeType {
-        CommonLong,  // two arguments
-        CommonShort, // one argument
+        Arithmetic,
         Unknown
     };
 
     struct OpCodeInfo {
         OpCodeType type;
+        int num_arguments;
         std::string name;
     };
 
@@ -96,23 +96,23 @@ union Instruction {
     struct : BitField<0x1a, 0x6, OpCode> {
         OpCodeInfo GetInfo() const {
             std::map<OpCode, OpCodeInfo> map = {
-                { OpCode::ADD,   { OpCodeType::CommonLong,  "ADD"  } },
-                { OpCode::DP3,   { OpCodeType::CommonLong,  "DP3"  } },
-                { OpCode::DP4,   { OpCodeType::CommonLong,  "DP4"  } },
-                { OpCode::MUL,   { OpCodeType::CommonLong,  "MUL"  } },
-                { OpCode::MAX,   { OpCodeType::CommonLong,  "MAX"  } },
-                { OpCode::MIN,   { OpCodeType::CommonLong,  "MIN"  } },
-                { OpCode::RCP,   { OpCodeType::CommonShort, "RCP"  } },
-                { OpCode::RSQ,   { OpCodeType::CommonShort, "RSQ"  } },
-                { OpCode::MOV,   { OpCodeType::CommonShort, "MOV"  } },
-                { OpCode::RET,   { OpCodeType::Unknown,     "RET"  } },
-                { OpCode::FLUSH, { OpCodeType::Unknown,     "FLS"  } },
-                { OpCode::CALL,  { OpCodeType::Unknown,     "CALL" } },
-                { OpCode::CMP,   { OpCodeType::Unknown,     "CMP"  } },
+                { OpCode::ADD,   { OpCodeType::Arithmetic, 3, "ADD"  } },
+                { OpCode::DP3,   { OpCodeType::Arithmetic, 3, "DP3"  } },
+                { OpCode::DP4,   { OpCodeType::Arithmetic, 3, "DP4"  } },
+                { OpCode::MUL,   { OpCodeType::Arithmetic, 3, "MUL"  } },
+                { OpCode::MAX,   { OpCodeType::Arithmetic, 3, "MAX"  } },
+                { OpCode::MIN,   { OpCodeType::Arithmetic, 3, "MIN"  } },
+                { OpCode::RCP,   { OpCodeType::Arithmetic, 2, "RCP"  } },
+                { OpCode::RSQ,   { OpCodeType::Arithmetic, 2, "RSQ"  } },
+                { OpCode::MOV,   { OpCodeType::Arithmetic, 2, "MOV"  } },
+//                { OpCode::RET,   { OpCodeType::Unknown,    ?, "RET"  } },
+//                { OpCode::FLUSH, { OpCodeType::Unknown,    ?, "FLS"  } },
+                { OpCode::CALL,  { OpCodeType::Unknown,    1, "CALL" } },
+//                { OpCode::CMP,   { OpCodeType::Unknown,    ?, "CMP"  } },
             };
             auto it = map.find(*this);
             if (it == map.end())
-                return { OpCodeType::Unknown, std::string("UNK") + std::to_string(static_cast<int>(this->Value())) };
+                return { OpCodeType::Unknown, 0, std::string("UNK") + std::to_string(static_cast<int>(this->Value())) };
             else
                 return it->second;
         }
