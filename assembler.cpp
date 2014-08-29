@@ -347,6 +347,7 @@ int main(int argc, char* argv[])
     dvle.label_table_offset = write_offset - dvlb.dvle_offset;
     dvle.label_table_size = label_table.size();
     std::vector<LabelInfo> final_label_table;
+    final_label_table.resize(label_table.size());
     for (auto& label : label_table) {
         LabelInfo info;
         info.id = 0; // Not sure what this should be

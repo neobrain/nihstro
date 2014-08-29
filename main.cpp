@@ -393,8 +393,8 @@ int main(int argc, char *argv[])
     } catch (const std::string& err) {
         std::cout << "Exception while reading \"" << argv[1] << "\": " << err << std::endl;
         return 1;
-    } catch (const std::ios_base::failure&) {
-        std::cout << "Exception while reading \"" << argv[1] << "\": ios_base::failure (invalid shbin?)" << std::endl;
+    } catch (const std::ios_base::failure& except) {
+        std::cout << "Exception while reading \"" << argv[1] << "\": ios_base::failure \"" << except.what() << "\" (invalid shbin?)" << std::endl;
         return 1;
     } catch (const std::bad_alloc&) {
         std::cout << "Exception while reading \"" << argv[1] << "\": bad_alloc (invalid shbin?)" << std::endl;
