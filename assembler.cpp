@@ -63,20 +63,20 @@ struct AssemblyParser : qi::grammar<Iterator, InstructionVariant(), AssemblySkip
                              ( "t", Instruction::Temporary)
                              ( "f", Instruction::FloatUniform);
 
-        swizzlers.add( "x",   1 )
-                     ( "y",   2 )
-                     ( "z",   4 )
-                     ( "w",   8 )
-                     ( "xy",  1 | 2 )
-                     ( "xz",  1 | 4 )
-                     ( "xw",  1 | 8 )
-                     ( "yz",  2 | 4 )
-                     ( "yw",  2 | 8 )
-                     ( "zw",  4 | 8 )
-                     ( "xyz", 1 | 2 | 4 )
-                     ( "xyw", 1 | 2 | 8 )
-                     ( "yzw", 2 | 4 | 8 )
-                     ( "xyz", 1 | 2 | 4 | 8 );
+        swizzlers.add( "x",    1 )
+                     ( "y",    2 )
+                     ( "z",    4 )
+                     ( "w",    8 )
+                     ( "xy",   1 | 2 )
+                     ( "xz",   1 | 4 )
+                     ( "xw",   1 | 8 )
+                     ( "yz",   2 | 4 )
+                     ( "yw",   2 | 8 )
+                     ( "zw",   4 | 8 )
+                     ( "xyz",  1 | 2 | 4 )
+                     ( "xyw",  1 | 2 | 8 )
+                     ( "yzw",  2 | 4 | 8 )
+                     ( "xyzw", 1 | 2 | 4 | 8 );
 
         // Setup rules
         identifier = qi::lexeme[+(qi::char_("a-zA-Z_")) >> -+qi::char_("0-9")];
