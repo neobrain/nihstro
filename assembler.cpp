@@ -222,142 +222,140 @@ int main(int argc, char* argv[])
 
     uint32_t program_write_offset = 0;
 
-    do {
-        InstructionVariant instr;
+    InstructionVariant instr;
+    while (phrase_parse(begin, input_code.end(), parser, skipper, instr)) {
 
-        bool r = phrase_parse(begin, input_code.end(),
-                              parser, skipper, instr);
+        using boost::fusion::at_c;
 
-        if (r) {
-            using boost::fusion::at_c;
+        if (instr.which() == 0) {
+            std::string label_symbol = boost::get<SequenceLabel>(instr);
 
-            if (instr.which() == 0) {
-                std::string label_symbol = boost::get<SequenceLabel>(instr);
+            auto it = std::find(symbol_table.begin(), symbol_table.end(), label_symbol);
+            if (it != symbol_table.end())
+                throw "Label \"" + label_symbol + "\" already defined in symbol table";
 
-                auto it = std::find(symbol_table.begin(), symbol_table.end(), label_symbol);
-                if (it != symbol_table.end())
-                    throw "Label \"" + label_symbol + "\" already defined in symbol table";
+            symbol_table.push_back(label_symbol);
+            uint32_t symbol_table_index = symbol_table.size() - 1;
 
-                symbol_table.push_back(label_symbol);
-                uint32_t symbol_table_index = symbol_table.size() - 1;
+            CustomLabelInfo label_info = { program_write_offset, symbol_table_index };
+            label_table.push_back(label_info);
+        } else if (instr.which() == 1) {
+            const auto& seqinstr = boost::get<SequenceInstruction>(instr);
 
-                CustomLabelInfo label_info = { program_write_offset, symbol_table_index };
-                label_table.push_back(label_info);
-            } else if (instr.which() == 1) {
-                const auto& seqinstr = boost::get<SequenceInstruction>(instr);
+            Instruction shinst;
+            shinst.hex = 0;
+            shinst.opcode.Assign(at_c<0>(seqinstr));
+            std::vector<RegisterWithIndex> regs_with_index = at_c<1>(seqinstr);
+            int num_args = regs_with_index.size();;
+            switch (shinst.opcode.GetInfo().type) {
+                case Instruction::OpCodeType::Arithmetic:
+                {
+                    const int num_inputs = shinst.opcode.GetInfo().num_arguments - 1;
+                    if (num_args < num_inputs + 1)
+                        throw "Incorrect number of arguments. Expected " + std::to_string(num_inputs + 1) + ", got " + std::to_string(num_args);
 
-                Instruction shinst;
-                shinst.hex = 0;
-                shinst.opcode.Assign(at_c<0>(seqinstr));
-                std::vector<RegisterWithIndex> regs_with_index = at_c<1>(seqinstr);
-                int num_args = regs_with_index.size();;
-                switch (shinst.opcode.GetInfo().type) {
-                    case Instruction::OpCodeType::Arithmetic:
-                    {
-                        const int num_inputs = shinst.opcode.GetInfo().num_arguments - 1;
-                        if (num_args < num_inputs + 1)
-                            throw "Incorrect number of arguments. Expected " + std::to_string(num_inputs + 1) + ", got " + std::to_string(num_args);
-
-                        // If no swizzler have been specified, use .xyzw - compile errors triggered by this are intended! (accessing subvectors should be done explicitly)
-                        InputSwizzlerMask input_dest_mask = (at_c<2>(regs_with_index[0]) == boost::none)
-                                                            ? InputSwizzlerMask::FullMask()
-                                                            : *at_c<2>(regs_with_index[0]);
-                        InputSwizzlerMask input_mask_src1;
-                        InputSwizzlerMask input_mask_src2;
-                        if (num_inputs > 1) {
-                            if (at_c<0>(regs_with_index[1]) == Instruction::FloatUniform &&
-                                at_c<0>(regs_with_index[2]) == Instruction::FloatUniform) {
-                                throw "Not more than one input register may be a floating point uniform";
-                            }
-
-                            // If second argument is a floating point register, swap it to first place
-                            if (at_c<0>(regs_with_index[2]) == Instruction::FloatUniform) {
-                                boost::swap(regs_with_index[1], regs_with_index[2]);
-                            }
-
-                            shinst.common.src2.InitializeFromTypeAndIndex(at_c<0>(regs_with_index[2]), at_c<1>(regs_with_index[2]));
-                            input_mask_src2 = (at_c<2>(regs_with_index[2]) == boost::none) ? InputSwizzlerMask::FullMask() : *at_c<2>(regs_with_index[2]);
-                        }
-                        input_mask_src1 = (at_c<2>(regs_with_index[1]) == boost::none) ? InputSwizzlerMask::FullMask() : *at_c<2>(regs_with_index[1]);
-
-                        shinst.common.dest.InitializeFromTypeAndIndex(at_c<0>(regs_with_index[0]), at_c<1>(regs_with_index[0]));
-                        shinst.common.src1.InitializeFromTypeAndIndex(at_c<0>(regs_with_index[1]), at_c<1>(regs_with_index[1]));
-
-                        const bool is_dot_product = (shinst.opcode == Instruction::OpCode::DP3 ||
-                                                     shinst.opcode == Instruction::OpCode::DP4);
-
-                        if (is_dot_product) {
-                            int expected_input_length = (shinst.opcode == Instruction::OpCode::DP3) ? 3 : 4;
-                            if (input_mask_src1.num_components != expected_input_length ||
-                                input_mask_src2.num_components != expected_input_length)
-                                throw "Input registers for dot product instructions need to use proper number of components";
-
-                            // NOTE: dest can use any number of components for dot products
-
-                        } else {
-                            // Generic syntax checking.. we likely want to have more special cases in the future!
-                            if (input_dest_mask.num_components != input_mask_src1.num_components ||
-                                (num_inputs > 1 && input_mask_src1.num_components != input_mask_src2.num_components)) {
-                                throw "Input registers need to use the same number of components as the output register!"
-                                      + std::string("(dest: ") + std::to_string(input_dest_mask.num_components) + " components, "
-                                      + std::string("src1: ") + std::to_string(input_mask_src1.num_components) + " components"
-                                      + ((num_inputs > 1) ? std::string(", src2: ") + std::to_string(input_mask_src2.num_components) + " components)"
-                                                          : std::string(")"));
-                            }
+                    // If no swizzler have been specified, use .xyzw - compile errors triggered by this are intended! (accessing subvectors should be done explicitly)
+                    InputSwizzlerMask input_dest_mask = (at_c<2>(regs_with_index[0]) == boost::none)
+                                                        ? InputSwizzlerMask::FullMask()
+                                                        : *at_c<2>(regs_with_index[0]);
+                    InputSwizzlerMask input_mask_src1;
+                    InputSwizzlerMask input_mask_src2;
+                    if (num_inputs > 1) {
+                        if (at_c<0>(regs_with_index[1]) == Instruction::FloatUniform &&
+                            at_c<0>(regs_with_index[2]) == Instruction::FloatUniform) {
+                            throw "Not more than one input register may be a floating point uniform";
                         }
 
-                        // Build swizzle patterns
-                        SwizzlePattern swizzle_pattern;
-                        swizzle_pattern.hex = 0;
-
-                        DestSwizzlerMask dest_mask{input_dest_mask};
-                        SourceSwizzlerMask mask_src1;
-                        SourceSwizzlerMask mask_src2;
-                        if (is_dot_product) {
-                            mask_src1 = SourceSwizzlerMask::Expand(input_mask_src1);
-                            mask_src2 = SourceSwizzlerMask::Expand(input_mask_src2);
-                        } else {
-                            mask_src1 = SourceSwizzlerMask::AccordingToDestMask(input_mask_src1, dest_mask);
-                            mask_src2 = SourceSwizzlerMask::AccordingToDestMask(input_mask_src2, dest_mask);
+                        // If second argument is a floating point register, swap it to first place
+                        if (at_c<0>(regs_with_index[2]) == Instruction::FloatUniform) {
+                            boost::swap(regs_with_index[1], regs_with_index[2]);
                         }
 
-                        for (int i = 0, active_component = 0; i < 4; ++i) {
-                            if (dest_mask.component_set[i])
-                                swizzle_pattern.SetDestComponentEnabled(i, true);
+                        shinst.common.src2.InitializeFromTypeAndIndex(at_c<0>(regs_with_index[2]), at_c<1>(regs_with_index[2]));
+                        input_mask_src2 = (at_c<2>(regs_with_index[2]) == boost::none) ? InputSwizzlerMask::FullMask() : *at_c<2>(regs_with_index[2]);
+                    }
+                    input_mask_src1 = (at_c<2>(regs_with_index[1]) == boost::none) ? InputSwizzlerMask::FullMask() : *at_c<2>(regs_with_index[1]);
 
-                            if (mask_src1.components[i] != SourceSwizzlerMask::Unspecified)
-                                swizzle_pattern.SetSelectorSrc1(i, static_cast<SwizzlePattern::Selector>(mask_src1.components[i]));
+                    shinst.common.dest.InitializeFromTypeAndIndex(at_c<0>(regs_with_index[0]), at_c<1>(regs_with_index[0]));
+                    shinst.common.src1.InitializeFromTypeAndIndex(at_c<0>(regs_with_index[1]), at_c<1>(regs_with_index[1]));
 
-                            if (num_inputs > 1 && mask_src2.components[i] != SourceSwizzlerMask::Unspecified)
-                                swizzle_pattern.SetSelectorSrc2(i, static_cast<SwizzlePattern::Selector>(mask_src2.components[i]));
+                    const bool is_dot_product = (shinst.opcode == Instruction::OpCode::DP3 ||
+                                                    shinst.opcode == Instruction::OpCode::DP4);
+
+                    if (is_dot_product) {
+                        int expected_input_length = (shinst.opcode == Instruction::OpCode::DP3) ? 3 : 4;
+                        if (input_mask_src1.num_components != expected_input_length ||
+                            input_mask_src2.num_components != expected_input_length)
+                            throw "Input registers for dot product instructions need to use proper number of components";
+
+                        // NOTE: dest can use any number of components for dot products
+
+                    } else {
+                        // Generic syntax checking.. we likely want to have more special cases in the future!
+                        if (input_dest_mask.num_components != input_mask_src1.num_components ||
+                            (num_inputs > 1 && input_mask_src1.num_components != input_mask_src2.num_components)) {
+                            throw "Input registers need to use the same number of components as the output register!"
+                                    + std::string("(dest: ") + std::to_string(input_dest_mask.num_components) + " components, "
+                                    + std::string("src1: ") + std::to_string(input_mask_src1.num_components) + " components"
+                                    + ((num_inputs > 1) ? std::string(", src2: ") + std::to_string(input_mask_src2.num_components) + " components)"
+                                                        : std::string(")"));
                         }
-
-                        // TODO: support other fields in SwizzlePattern (e.g. negate_src1)
-                        auto it = std::find_if(swizzle_patterns.begin(), swizzle_patterns.end(),
-                                               [&swizzle_pattern](const SwizzlePattern& val) { return val.hex == swizzle_pattern.hex; });
-                        if (it == swizzle_patterns.end()) {
-                            swizzle_patterns.push_back(swizzle_pattern);
-                            it = swizzle_patterns.end() - 1;
-
-                            if (swizzle_patterns.size() > 127)
-                                throw "Limit of 127 swizzle patterns has been exhausted";
-                        }
-                        shinst.common.operand_desc_id = it - swizzle_patterns.begin();
-
-                        instructions.push_back(shinst);
-                        break;
                     }
 
-                    default:
-                        throw "Unknown instruction encountered";
-                        break;
+                    // Build swizzle patterns
+                    SwizzlePattern swizzle_pattern;
+                    swizzle_pattern.hex = 0;
+
+                    DestSwizzlerMask dest_mask{input_dest_mask};
+                    SourceSwizzlerMask mask_src1;
+                    SourceSwizzlerMask mask_src2;
+                    if (is_dot_product) {
+                        mask_src1 = SourceSwizzlerMask::Expand(input_mask_src1);
+                        mask_src2 = SourceSwizzlerMask::Expand(input_mask_src2);
+                    } else {
+                        mask_src1 = SourceSwizzlerMask::AccordingToDestMask(input_mask_src1, dest_mask);
+                        mask_src2 = SourceSwizzlerMask::AccordingToDestMask(input_mask_src2, dest_mask);
+                    }
+
+                    for (int i = 0, active_component = 0; i < 4; ++i) {
+                        if (dest_mask.component_set[i])
+                            swizzle_pattern.SetDestComponentEnabled(i, true);
+
+                        if (mask_src1.components[i] != SourceSwizzlerMask::Unspecified)
+                            swizzle_pattern.SetSelectorSrc1(i, static_cast<SwizzlePattern::Selector>(mask_src1.components[i]));
+
+                        if (num_inputs > 1 && mask_src2.components[i] != SourceSwizzlerMask::Unspecified)
+                            swizzle_pattern.SetSelectorSrc2(i, static_cast<SwizzlePattern::Selector>(mask_src2.components[i]));
+                    }
+
+                    // TODO: support other fields in SwizzlePattern (e.g. negate_src1)
+                    auto it = std::find_if(swizzle_patterns.begin(), swizzle_patterns.end(),
+                                            [&swizzle_pattern](const SwizzlePattern& val) { return val.hex == swizzle_pattern.hex; });
+                    if (it == swizzle_patterns.end()) {
+                        swizzle_patterns.push_back(swizzle_pattern);
+                        it = swizzle_patterns.end() - 1;
+
+                        if (swizzle_patterns.size() > 127)
+                            throw "Limit of 127 swizzle patterns has been exhausted";
+                    }
+                    shinst.common.operand_desc_id = it - swizzle_patterns.begin();
+
+                    instructions.push_back(shinst);
+                    break;
                 }
-                ++program_write_offset;
+
+                default:
+                    throw "Unknown instruction encountered";
+                    break;
             }
-        } else {
-            throw "Invalid token found: " + std::to_string(begin - input_code.begin());
+            ++program_write_offset;
         }
-    } while (begin != input_code.end());
+    }
+
+    // Error out if we didn't parse the full file
+    if (begin != input_code.end()) {
+        throw "Invalid token found: " + std::to_string(begin - input_code.begin());
+    }
 
     auto GetSymbolTableEntryByteOffset = [&symbol_table](int index) {
         int offset = 0;
