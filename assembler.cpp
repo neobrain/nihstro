@@ -95,10 +95,7 @@ struct SourceSwizzlerMask {
 };
 
 // Token definitions
-struct TokenRegister : boost::fusion::vector<Instruction::RegisterType,         // input/output/uniform...
-                                             int,                               // index
-                                             boost::optional<InputSwizzlerMask> // swizzle mask
-                                            > {
+struct TokenRegisterWithIndex : boost::fusion::vector<Instruction::RegisterType, int> {
 
     const Instruction::RegisterType& GetType() const {
         return boost::fusion::at_c<0>(*this);
@@ -107,13 +104,26 @@ struct TokenRegister : boost::fusion::vector<Instruction::RegisterType,         
     const int& GetIndex() const {
         return boost::fusion::at_c<1>(*this);
     }
+};
+
+struct TokenRegister : boost::fusion::vector<TokenRegisterWithIndex,
+                                             boost::optional<InputSwizzlerMask> // swizzle mask
+                                            > {
+
+    const Instruction::RegisterType& GetType() const {
+        return boost::fusion::at_c<0>(*this).GetType();
+    }
+
+    const int& GetIndex() const {
+        return boost::fusion::at_c<0>(*this).GetIndex();
+    }
 
     // Returns .xyzw if input swizzler mask is not set
     const InputSwizzlerMask GetInputSwizzlerMask() const {
-        if (boost::fusion::at_c<2>(*this) == boost::none)
+        if (boost::fusion::at_c<1>(*this) == boost::none)
             return InputSwizzlerMask::FullMask();
         else
-            return boost::fusion::at_c<2>(*this).get();
+            return boost::fusion::at_c<1>(*this).get();
     }
 };
 
@@ -164,17 +174,61 @@ struct Token : boost::variant<Instruction::OpCode,
 using TokenSequenceLabel = std::string;
 
 struct TokenSequenceInstruction : std::vector<Token> {
+};
 
+struct TokenSequenceRegisterName : std::vector<Token> {
+    // TODO: Will likely want to specify output semantics here, too!
+
+    // TODO: Binding type is not really supported yet... hence all indices are off by one
+    enum Type {
+        OutputPos   = 0,
+        Input       = 1,
+        Constant    = 2
+    };
+
+/*    const Type GetType() const {
+        return boost::get<Type>((*this)[0]);
+    }*/
+
+    const Instruction::RegisterType GetRegisterType() const {
+        return boost::get<TokenRegister>((*this)[/*2*/1]).GetType();
+    }
+
+    const int GetRegisterIndex() const {
+        return boost::get<TokenRegister>((*this)[/*2*/1]).GetIndex();
+    }
+
+    const TokenRegisterWithIndex GetRegisterWithIndex() const {
+        TokenRegisterWithIndex ret;
+        boost::fusion::at_c<0>(ret) = GetRegisterType();
+        boost::fusion::at_c<1>(ret) = GetRegisterIndex();
+        return ret;
+    }
+
+    const TokenIdentifier& GetName() const {
+        return boost::get<TokenIdentifier>((*this)[/*1*/0]);
+    }
+
+    const TokenConstant& GetValue() const {
+        return boost::get<TokenConstant>((*this)[/*3*/2]);
+    }
 };
 
 using TokenSequence = boost::variant<TokenSequenceLabel,
-                                     TokenSequenceInstruction>;
+                                     TokenSequenceInstruction,
+                                     TokenSequenceRegisterName>;
+
+struct ParserContext {
+    qi::symbols<char, TokenRegisterWithIndex> register_symbols;
+};
+
 
 template<typename Iterator>
 struct AssemblyParser : qi::grammar<Iterator, TokenSequence(), AssemblySkipper<Iterator>> {
     using Skipper = AssemblySkipper<Iterator>;
 
-    AssemblyParser() : AssemblyParser::base_type(start) {
+    AssemblyParser(const ParserContext& context) : AssemblyParser::base_type(start) {
+
         // Setup symbol table
         opcodes.add
                    ( "add",   Instruction::OpCode::ADD   )
@@ -213,30 +267,40 @@ struct AssemblyParser : qi::grammar<Iterator, TokenSequence(), AssemblySkipper<I
                      ( "yzw",  {3, {InputSwizzlerMask::y,InputSwizzlerMask::z,InputSwizzlerMask::w}} )
                      ( "xyzw", {4, {InputSwizzlerMask::x,InputSwizzlerMask::y,InputSwizzlerMask::z,InputSwizzlerMask::w}} );
 
+        define_out_registers.add(".out_pos", TokenSequenceRegisterName::OutputPos);
+        define_out_registers.add(".alias", TokenSequenceRegisterName::Input);
+        define_out_registers.add(".const", TokenSequenceRegisterName::Constant);
+
         // Setup rules
         identifier = qi::lexeme[+(qi::char_("a-zA-Z_")) >> -+qi::char_("0-9")];
 
         auto label = identifier >> qi::lit(':');
 
-        register_rule = qi::lexeme[(register_prefixes >> qi::int_) >> -('.' >> swizzlers)];
-        opcode = qi::no_case[qi::lexeme[opcodes]];
+        auto register_with_index = (register_prefixes >> qi::int_) | context.register_symbols;
+        register_rule = (qi::lexeme[register_with_index >> -('.' >> swizzlers)]);
+
+        opcode = qi::no_case[qi::lexeme[opcodes >> qi::omit[ascii::blank]]]; // Making sure that a mnemonic is always followed by a space
 
         token = opcode | register_rule | identifier | qi::int_;
 
         instr = token >> (token % ','); // e.g. "add o1, t2, t5"
 
-        start %= label | instr;
+        defineoutreg = qi::omit[qi::lexeme[define_out_registers >> ascii::blank]] >> token >> ',' >> token;
+
+        start %= label | instr | defineoutreg;
     }
 
     qi::symbols<char, Instruction::OpCode>        opcodes;
     qi::symbols<char, Instruction::RegisterType>  register_prefixes;
     qi::symbols<char, InputSwizzlerMask>          swizzlers;
+    qi::symbols<char, TokenSequenceRegisterName::Type> define_out_registers;
 
     qi::rule<Iterator, TokenSequenceInstruction(),Skipper> instr;
     qi::rule<Iterator, Instruction::OpCode(),     Skipper> opcode;
     qi::rule<Iterator, std::string(),             Skipper> identifier;
     qi::rule<Iterator, TokenRegister(),           Skipper> register_rule;
     qi::rule<Iterator, TokenSequence(),           Skipper> start;
+    qi::rule<Iterator, TokenSequenceRegisterName(), Skipper> defineoutreg;
     qi::rule<Iterator, Token(),                   Skipper> token;
 };
 
@@ -252,16 +316,15 @@ int main(int argc, char* argv[])
         return 1;
     }
 
+    std::string input_code;
+    std::string::iterator begin;
+
     try {
 
     std::string output_filename = argv[1];
     std::string input_filename = argv[2];
 
-    AssemblyParser<std::string::iterator> parser;
-    AssemblySkipper<std::string::iterator> skipper;
-
     std::ifstream input_file(input_filename);
-    std::string input_code;
     if (input_file)
     {
         input_file.seekg(0, std::ios::end);
@@ -275,7 +338,7 @@ int main(int argc, char* argv[])
         throw "Could not open input file";
     }
 
-    std::string::iterator begin = input_code.begin();
+    begin = input_code.begin();
 
     std::vector<Instruction> instructions;
     std::vector<SwizzlePattern> swizzle_patterns;
@@ -291,8 +354,15 @@ int main(int argc, char* argv[])
 
     uint32_t program_write_offset = 0;
 
-    TokenSequence token_sequence;
-    while (phrase_parse(begin, input_code.end(), parser, skipper, token_sequence)) {
+    ParserContext context;
+
+    while (true) {
+        AssemblyParser<std::string::iterator> parser(context);
+        AssemblySkipper<std::string::iterator> skipper;
+        TokenSequence token_sequence;
+
+        if (false == phrase_parse(begin, input_code.end(), parser, skipper, token_sequence))
+            break;
 
         if (token_sequence.which() == 0) {
             std::string label_symbol = boost::get<TokenSequenceLabel>(token_sequence);
@@ -324,10 +394,22 @@ int main(int argc, char* argv[])
                         throw "Incorrect number of arguments. Expected " + std::to_string(num_inputs + 1) + ", got " + std::to_string(num_args);
 
                     if (!instr[1].HasType(Token::Register))
-                        throw "Unexpected token in arithmetic instruction statement: Expected register identifier as destination argument";
+                        throw "Unexpected token in arithmetic instruction statement: Expected register identifier as destination argument but got type " + std::to_string(instr[1].which());
 
                     if (!instr[2].HasType(Token::Register))
-                        throw "Unexpected token in arithmetic instruction statement: Expected register identifier as first source argument";
+                        throw "Unexpected token in arithmetic instruction statement: Expected register identifier as first source argument but got type " + std::to_string(instr[2].which());
+
+                    auto AssertRegisterReadable = [](Instruction::RegisterType type) {
+                        if (type != Instruction::Input && type != Instruction::Temporary &&
+                            type != Instruction::FloatUniform)
+                            throw "Specified register is not readable (only input, temporary and uniform registers are writeable)";
+                    };
+                    auto AssertRegisterWriteable = [](Instruction::RegisterType type) {
+                        if (type != Instruction::Output && type != Instruction::Temporary)
+                            throw "Specified register is not writeable (only output and temporary registers are writeable)";
+                    };
+                    AssertRegisterWriteable(instr[1].GetRegister().GetType());
+                    AssertRegisterReadable(instr[2].GetRegister().GetType());
 
                     // If no swizzler have been specified, use .xyzw - compile errors triggered by this are intended! (accessing subvectors should be done explicitly)
                     InputSwizzlerMask input_dest_mask = instr[1].GetRegister().GetInputSwizzlerMask();
@@ -336,6 +418,8 @@ int main(int argc, char* argv[])
                     if (num_inputs > 1) {
                         if (!instr[3].HasType(Token::Register))
                             throw "Unexpected token in arithmetic instruction statement: Expected register identifier as second source argument";
+
+                        AssertRegisterReadable(instr[3].GetRegister().GetType());
 
                         if (instr[2].GetRegister().GetType() == Instruction::FloatUniform &&
                             instr[3].GetRegister().GetType() == Instruction::FloatUniform) {
@@ -425,6 +509,29 @@ int main(int argc, char* argv[])
                     break;
             }
             ++program_write_offset;
+        } else if (token_sequence.which() == 2) {
+            auto& var = boost::get<TokenSequenceRegisterName>(token_sequence);
+
+            if (var.size() < /*3*/2)
+                throw "Not enough arguments given for register name binding";
+
+            if (var[/*1*/0].which() != Token::Identifier || var[/*2*/1].which() != Token::Register)
+                throw "Invalid arguments given for register name binding (got " + std::to_string(var[/*1*/0].which()) + " and " + std::to_string(var[/*2*/1].which()) + ", expected name and register, e.g. \".out_pos position o1\")";
+
+            if (boost::fusion::at_c<1>(var[/*2*/1].GetRegister()) != boost::none)
+                throw "Specifying a swizzler mask for binding register names is forbidden";
+
+/*            if (var.GetType() == TokenSequenceRegisterName::Constant) {
+                if (var.size() < 4)
+                    throw "Not enough arguments given for constant assignment";
+
+                if (var[3].which() != Token::Constant)
+                    throw "Invalid arguments given for register name binding (expected name, register and value, e.g. \".const my_vector (0.4,0.2,0.1,0.0)\")";
+            }*/
+
+            context.register_symbols.add( var.GetName().c_str(), var.GetRegisterWithIndex() );
+
+            // TODO: Write names to output shbin
         }
     }
 
@@ -521,9 +628,11 @@ int main(int argc, char* argv[])
 
     } catch(const std::string& err) {
         std::cout << "Error: " << err << std::endl;
+        std::cout << "At: " << input_code.substr(begin - input_code.begin()) << std::endl;
         return 1;
     } catch(const char* err) {
         std::cout << "Error: " << err << std::endl;
+        std::cout << "At: " << input_code.substr(begin - input_code.begin()) << std::endl;
         return 1;
     }
 
