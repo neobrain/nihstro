@@ -305,20 +305,27 @@ struct AssemblyParser : qi::grammar<Iterator, TokenSequence(), AssemblySkipper<I
 
 		auto comma_rule = qi::lit(',');
 		instr_extra_argument = comma_rule > token;
-        instr[1] = opcode[1] > token;
-        instr[2] = opcode[2] > token > instr_extra_argument;
-        instr[3] = opcode[3] > token > instr_extra_argument > instr_extra_argument;
-        instr[4] = opcode[4] > token > instr_extra_argument > instr_extra_argument > instr_extra_argument;
+        not_comma = !comma_rule;
+        instr[1] = opcode[1] > token > not_comma;
+        instr[2] = opcode[2] > token > instr_extra_argument > not_comma;
+        instr[3] = opcode[3] > token > instr_extra_argument > instr_extra_argument > not_comma;
+        instr[4] = opcode[4] > token > instr_extra_argument > instr_extra_argument > instr_extra_argument > not_comma;
 
         defineoutreg = '.' >> qi::omit[qi::lexeme[define_out_registers >> ascii::blank]] >> token >> ',' >> token;
 
+        // TODO: Expect a newline at the end of things...
         start %= label | (instr[0] | instr[1] | instr[2] | instr[3] | instr[4]) | defineoutreg;
 
 		// Error handling
 		token.name("token");
         instr_extra_argument.name("additional argument");
+        not_comma.name("not comma");
 
         // TODO: Make these error messages more helpful...
+        // _1: Iterator first
+        // _2: Iterator last
+        // _3: Iterator err_pos
+        // _4: spirit::info const &what
 		qi::on_error<qi::fail>
 		(
 			start
@@ -326,7 +333,7 @@ struct AssemblyParser : qi::grammar<Iterator, TokenSequence(), AssemblySkipper<I
                 << phoenix::val("Error! Expected ")
                 << _4                               // what failed?
                 << phoenix::val(" here: \"")
-                << phoenix::construct<std::string>(_3, _2)   // iterators to error-pos, end
+                << phoenix::construct<std::string>(_1, _3) + "___" + phoenix::construct<std::string>(_3+1, _2)
                 << phoenix::val("\"")
                 << std::endl
 		);
@@ -346,6 +353,7 @@ struct AssemblyParser : qi::grammar<Iterator, TokenSequence(), AssemblySkipper<I
     qi::rule<Iterator, Token(),                   Skipper> token;
     qi::rule<Iterator, Token(),                   Skipper> opcode_as_token;
     qi::rule<Iterator, Token(),                   Skipper> instr_extra_argument;
+    qi::rule<Iterator,                            Skipper> not_comma;
 };
 
 int main(int argc, char* argv[])
