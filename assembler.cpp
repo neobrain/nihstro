@@ -4,10 +4,18 @@
 #include <fstream>
 #include <boost/spirit/include/qi.hpp>
 
+#include <boost/spirit/include/phoenix_core.hpp>
+#include <boost/spirit/include/phoenix_operator.hpp>
+#include <boost/spirit/include/phoenix_fusion.hpp>
+#include <boost/spirit/include/phoenix_stl.hpp>
+#include <boost/spirit/include/phoenix_object.hpp>
+
+
 #include "shader_binary.h"
 #include "shader_bytecode.h"
 
 using namespace boost::spirit;
+namespace phoenix = boost::phoenix;
 
 template<typename Iterator>
 struct AssemblySkipper : public qi::grammar<Iterator> {
@@ -230,19 +238,24 @@ struct AssemblyParser : qi::grammar<Iterator, TokenSequence(), AssemblySkipper<I
     AssemblyParser(const ParserContext& context) : AssemblyParser::base_type(start) {
 
         // Setup symbol table
-        opcodes.add
+        opcodes[0].add
+                   ( "ret",   Instruction::OpCode::RET   )
+                   ( "flush", Instruction::OpCode::FLUSH );
+        opcodes[1].add
+                   ( "call",  Instruction::OpCode::CALL  );
+
+        opcodes[2].add
+                   ( "mov",   Instruction::OpCode::MOV   )
+                   ( "rcp",   Instruction::OpCode::RCP   )
+                   ( "rsq",   Instruction::OpCode::RSQ   );
+        opcodes[3].add
                    ( "add",   Instruction::OpCode::ADD   )
+                   ( "mul",   Instruction::OpCode::MUL   )
                    ( "dp3",   Instruction::OpCode::DP3   )
                    ( "dp4",   Instruction::OpCode::DP4   )
-                   ( "mul",   Instruction::OpCode::MUL   )
                    ( "max",   Instruction::OpCode::MAX   )
-                   ( "min",   Instruction::OpCode::MIN   )
-                   ( "rcp",   Instruction::OpCode::RCP   )
-                   ( "rsq",   Instruction::OpCode::RSQ   )
-                   ( "mov",   Instruction::OpCode::MOV   )
-                   ( "ret",   Instruction::OpCode::RET   )
-                   ( "flush", Instruction::OpCode::FLUSH )
-                   ( "call",  Instruction::OpCode::CALL  )
+                   ( "min",   Instruction::OpCode::MIN   );
+        opcodes[4].add
                    ( "cmp",   Instruction::OpCode::CMP   );
 
         register_prefixes.add( "i", Instruction::Input)
@@ -267,9 +280,9 @@ struct AssemblyParser : qi::grammar<Iterator, TokenSequence(), AssemblySkipper<I
                      ( "yzw",  {3, {InputSwizzlerMask::y,InputSwizzlerMask::z,InputSwizzlerMask::w}} )
                      ( "xyzw", {4, {InputSwizzlerMask::x,InputSwizzlerMask::y,InputSwizzlerMask::z,InputSwizzlerMask::w}} );
 
-        define_out_registers.add(".out_pos", TokenSequenceRegisterName::OutputPos);
-        define_out_registers.add(".alias", TokenSequenceRegisterName::Input);
-        define_out_registers.add(".const", TokenSequenceRegisterName::Constant);
+        define_out_registers.add("out_pos", TokenSequenceRegisterName::OutputPos);
+        define_out_registers.add("alias", TokenSequenceRegisterName::Input);
+        define_out_registers.add("const", TokenSequenceRegisterName::Constant);
 
         // Setup rules
         identifier = qi::lexeme[+(qi::char_("a-zA-Z_")) >> -+qi::char_("0-9")];
@@ -279,29 +292,60 @@ struct AssemblyParser : qi::grammar<Iterator, TokenSequence(), AssemblySkipper<I
         auto register_with_index = (register_prefixes >> qi::int_) | context.register_symbols;
         register_rule = (qi::lexeme[register_with_index >> -('.' >> swizzlers)]);
 
-        opcode = qi::no_case[qi::lexeme[opcodes >> qi::omit[ascii::blank]]]; // Making sure that a mnemonic is always followed by a space
+        token = register_rule | identifier | qi::int_;
 
-        token = opcode | register_rule | identifier | qi::int_;
+		for (int i = 0; i < 5; ++i) {
+            // Make sure that a mnemonic is always followed by a space
+            opcode[i] = qi::no_case[qi::lexeme[opcodes[i] >> qi::omit[ascii::blank]]];
+        }
 
-        instr = token >> (token % ','); // e.g. "add o1, t2, t5"
+        // e.g. "add o1, t2, t5"
+        opcode_as_token = opcode[0];
+        instr[0] = opcode_as_token;
 
-        defineoutreg = qi::omit[qi::lexeme[define_out_registers >> ascii::blank]] >> token >> ',' >> token;
+		auto comma_rule = qi::lit(',');
+		instr_extra_argument = comma_rule > token;
+        instr[1] = opcode[1] > token;
+        instr[2] = opcode[2] > token > instr_extra_argument;
+        instr[3] = opcode[3] > token > instr_extra_argument > instr_extra_argument;
+        instr[4] = opcode[4] > token > instr_extra_argument > instr_extra_argument > instr_extra_argument;
 
-        start %= label | instr | defineoutreg;
+        defineoutreg = '.' >> qi::omit[qi::lexeme[define_out_registers >> ascii::blank]] >> token >> ',' >> token;
+
+        start %= label | (instr[0] | instr[1] | instr[2] | instr[3] | instr[4]) | defineoutreg;
+
+		// Error handling
+		token.name("token");
+        instr_extra_argument.name("additional argument");
+
+        // TODO: Make these error messages more helpful...
+		qi::on_error<qi::fail>
+		(
+			start
+          , std::cout
+                << phoenix::val("Error! Expected ")
+                << _4                               // what failed?
+                << phoenix::val(" here: \"")
+                << phoenix::construct<std::string>(_3, _2)   // iterators to error-pos, end
+                << phoenix::val("\"")
+                << std::endl
+		);
     }
 
-    qi::symbols<char, Instruction::OpCode>        opcodes;
+    qi::symbols<char, Instruction::OpCode>        opcodes[5]; // indexed by number of arguments
     qi::symbols<char, Instruction::RegisterType>  register_prefixes;
     qi::symbols<char, InputSwizzlerMask>          swizzlers;
     qi::symbols<char, TokenSequenceRegisterName::Type> define_out_registers;
 
-    qi::rule<Iterator, TokenSequenceInstruction(),Skipper> instr;
-    qi::rule<Iterator, Instruction::OpCode(),     Skipper> opcode;
+    qi::rule<Iterator, TokenSequenceInstruction(),Skipper> instr[5];
+    qi::rule<Iterator, Instruction::OpCode(),     Skipper> opcode[5];
     qi::rule<Iterator, std::string(),             Skipper> identifier;
     qi::rule<Iterator, TokenRegister(),           Skipper> register_rule;
     qi::rule<Iterator, TokenSequence(),           Skipper> start;
     qi::rule<Iterator, TokenSequenceRegisterName(), Skipper> defineoutreg;
     qi::rule<Iterator, Token(),                   Skipper> token;
+    qi::rule<Iterator, Token(),                   Skipper> opcode_as_token;
+    qi::rule<Iterator, Token(),                   Skipper> instr_extra_argument;
 };
 
 int main(int argc, char* argv[])
