@@ -251,8 +251,9 @@ struct AssemblyParser : qi::grammar<Iterator, Statement(), AssemblySkipper<Itera
         instr[4] = opcode[4] >> (expression % qi::lit(',')) >> not_comma;
 
         declaration_output = qi::omit[qi::lexeme["out" >> ascii::blank]] > identifier > context.identifiers > output_semantics;
-        declaration_constant = (qi::omit[qi::lexeme["const "]] >> identifier > context.identifiers > qi::repeat(1)[qi::float_])
-                               | (qi::omit[qi::lexeme["const "]] >> identifier > context.identifiers > qi::lit('(') > (qi::float_ % qi::lit(',')) >> qi::lit(')'));
+        declaration_constant = qi::omit[qi::lexeme["const "]] >> identifier > context.identifiers
+                               > (qi::repeat(1)[qi::float_]
+                                  | (qi::lit('(') > (qi::float_ % qi::lit(',')) > qi::lit(')')));
         declaration_alias = qi::omit[qi::lexeme["alias" >> ascii::blank]] > identifier > context.identifiers;
         declaration = qi::lit('.') > (declaration_output | declaration_constant | declaration_alias);
 
@@ -329,24 +330,24 @@ struct Atomic {
     InputSwizzlerMask mask;
 
     const Instruction::RegisterType GetType() const {
-        if (register_index > (int)RegisterSpace::Output)
+        if (register_index >= (int)RegisterSpace::Output)
             return Instruction::Output;
-        else if (register_index > (int)RegisterSpace::FloatUniform)
+        else if (register_index >= (int)RegisterSpace::FloatUniform)
             return Instruction::FloatUniform;
-        else if (register_index > (int)RegisterSpace::Temporary)
+        else if (register_index >= (int)RegisterSpace::Temporary)
             return Instruction::Temporary;
-        else if (register_index > (int)RegisterSpace::Input)
+        else if (register_index >= (int)RegisterSpace::Input)
             return Instruction::Input;
     }
 
     int GetIndex() const {
-        if (register_index > (int)RegisterSpace::Output)
+        if (register_index >= (int)RegisterSpace::Output)
             return register_index - (int)RegisterSpace::Output;
-        else if (register_index > (int)RegisterSpace::FloatUniform)
+        else if (register_index >= (int)RegisterSpace::FloatUniform)
             return register_index - (int)RegisterSpace::FloatUniform;
-        else if (register_index > (int)RegisterSpace::Temporary)
+        else if (register_index >= (int)RegisterSpace::Temporary)
             return register_index - (int)RegisterSpace::Temporary;
-        else if (register_index > (int)RegisterSpace::Input)
+        else if (register_index >= (int)RegisterSpace::Input)
             return register_index - (int)RegisterSpace::Input;
     }
 };
@@ -485,11 +486,11 @@ int main(int argc, char* argv[])
                             type != Instruction::FloatUniform)
                             throw "Specified register is not readable (only input, temporary and uniform registers are writeable)";
                     };
-                    auto AssertRegisterWriteable = [](Instruction::RegisterType type) {
+                    auto AssertRegisterWriteable = [](Instruction::RegisterType type, int index) {
                         if (type != Instruction::Output && type != Instruction::Temporary)
-                            throw "Specified register is not writeable (only output and temporary registers are writeable)";
+                            throw "Specified register " + std::to_string((int)type) + " " + std::to_string(index) + " is not writeable (only output and temporary registers are writeable)";
                     };
-                    AssertRegisterWriteable(arguments[0].GetType());
+                    AssertRegisterWriteable(arguments[0].GetType(), arguments[0].GetIndex());
                     AssertRegisterReadable(arguments[1].GetType());
 
                     // If no swizzler have been specified, use .xyzw - compile errors triggered by this are intended! (accessing subvectors should be done explicitly)
