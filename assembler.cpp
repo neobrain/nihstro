@@ -133,9 +133,7 @@ struct SourceSwizzlerMask {
 using Identifier = int;
 
 // TODO: This is still quite the limited expression. Ideally we want to support nested expressions, too
-struct Expression : boost::fusion::vector<Identifier, std::vector<InputSwizzlerMask>> {
-
-};
+using Expression = boost::fusion::vector<Identifier, std::vector<InputSwizzlerMask>>;
 
 using StatementLabel = std::string;
 
@@ -151,19 +149,17 @@ struct StatementInstruction : boost::fusion::vector<Instruction::OpCode, std::ve
 };
 
 
-enum class RegisterNameType {
-    OutputPos   = 0,
-    Input       = 1,
-    Constant    = 2
+//using DeclarationConstant = boost::fusion::vector<std::string, Identifier, std::vector<float>>;
+struct DeclarationConstant : boost::fusion::vector<std::string, Identifier, std::vector<float>> {
 };
+using DeclarationOutput   = boost::fusion::vector<std::string, Identifier, OutputRegisterInfo::Type>;
+using DeclarationAlias    = boost::fusion::vector<std::string, Identifier>;
 
-struct StatementRegisterName : boost::fusion::vector<RegisterNameType, std::string, Identifier> {
-
-};
+using StatementDeclaration = boost::variant<DeclarationConstant, DeclarationOutput, DeclarationAlias>;
 
 using Statement = boost::variant<StatementLabel,
                                  StatementInstruction,
-                                 StatementRegisterName>;
+                                 StatementDeclaration>;
 
 struct ParserContext {
     // Maps known identifiers to an index to the controller's identifier list
@@ -197,11 +193,6 @@ struct AssemblyParser : qi::grammar<Iterator, Statement(), AssemblySkipper<Itera
         opcodes[4].add
                    ( "cmp",   Instruction::OpCode::CMP   );
 
-        register_prefixes.add( "i", Instruction::Input)
-                             ( "o", Instruction::Output)
-                             ( "t", Instruction::Temporary)
-                             ( "f", Instruction::FloatUniform);
-
         // TODO: Might want to change to only have "x", "y", "z" and "w"
         // TODO: Add rgba/stq masks
         swizzlers.add( "x",    {1, {InputSwizzlerMask::x}} )
@@ -219,13 +210,18 @@ struct AssemblyParser : qi::grammar<Iterator, Statement(), AssemblySkipper<Itera
                      ( "xzw",  {3, {InputSwizzlerMask::x,InputSwizzlerMask::z,InputSwizzlerMask::w}} )
                      ( "yzw",  {3, {InputSwizzlerMask::y,InputSwizzlerMask::z,InputSwizzlerMask::w}} )
                      ( "xyzw", {4, {InputSwizzlerMask::x,InputSwizzlerMask::y,InputSwizzlerMask::z,InputSwizzlerMask::w}} );
+        swizzle_mask = qi::lexeme[swizzlers];
 
-        define_out_registers.add("out_pos", RegisterNameType::OutputPos);
-        define_out_registers.add("alias", RegisterNameType::Input);
-        define_out_registers.add("const", RegisterNameType::Constant);
+        output_semantics.add("position", OutputRegisterInfo::POSITION);
+        output_semantics.add("color", OutputRegisterInfo::COLOR);
+        output_semantics.add("texcoord0", OutputRegisterInfo::TEXCOORD0);
+        output_semantics.add("texcoord1", OutputRegisterInfo::TEXCOORD1);
+        output_semantics.add("texcoord2", OutputRegisterInfo::TEXCOORD2);
+        output_semantics_rule = qi::lexeme[output_semantics];
 
         // Setup rules
         identifier = qi::lexeme[+(qi::char_("a-zA-Z_")) >> -+qi::char_("0-9")];
+        known_identifier = qi::lexeme[context.identifiers];
 
         auto label = identifier >> qi::lit(':');
 
@@ -234,8 +230,7 @@ struct AssemblyParser : qi::grammar<Iterator, Statement(), AssemblySkipper<Itera
             opcode[i] = qi::no_case[qi::lexeme[opcodes[i] >> qi::omit[ascii::blank]]];
         }
 
-        swizzle_mask = qi::lexeme[swizzlers];
-        expression = qi::lexeme[context.identifiers] >> *(qi::lit('.') >> swizzle_mask);
+        expression = known_identifier >> *(qi::lit('.') >> swizzle_mask);
 
         // e.g. "add o1, t2, t5"
         // TODO: Using > instead of >> would break the argument number detection, for whatever reason...
@@ -255,16 +250,23 @@ struct AssemblyParser : qi::grammar<Iterator, Statement(), AssemblySkipper<Itera
         instr[3] = opcode[3] >> (expression % qi::lit(',')) >> not_comma;
         instr[4] = opcode[4] >> (expression % qi::lit(',')) >> not_comma;
 
-        defineoutreg = qi::lit('.') >> qi::lexeme[define_out_registers >> ascii::blank] >> identifier >> ',' >> qi::lexeme[context.identifiers];
+        declaration_output = qi::omit[qi::lexeme["out" >> ascii::blank]] > identifier > context.identifiers > output_semantics;
+        declaration_constant = (qi::omit[qi::lexeme["const "]] >> identifier > context.identifiers > qi::repeat(1)[qi::float_])
+                               | (qi::omit[qi::lexeme["const "]] >> identifier > context.identifiers > qi::lit('(') > (qi::float_ % qi::lit(',')) >> qi::lit(')'));
+        declaration_alias = qi::omit[qi::lexeme["alias" >> ascii::blank]] > identifier > context.identifiers;
+        declaration = qi::lit('.') > (declaration_output | declaration_constant | declaration_alias);
 
         // TODO: Expect a newline at the end of things...
-        start %= label | (instr[0] | instr[1] | instr[2] | instr[3] | instr[4]) | defineoutreg;
+        start %= label | (instr[0] | instr[1] | instr[2] | instr[3] | instr[4]) | declaration;
 
 		// Error handling
         instr_extra_argument.name("additional argument");
         not_comma.name("not comma");
         expression.name("expression");
         swizzle_mask.name("swizzle mask");
+        identifier.name("identifier");
+        known_identifier.name("known identifier");
+        output_semantics_rule.name("output semantic");
 
         // TODO: Make these error messages more helpful...
         // _1: Iterator first
@@ -285,20 +287,31 @@ struct AssemblyParser : qi::grammar<Iterator, Statement(), AssemblySkipper<Itera
     }
 
     qi::symbols<char, Instruction::OpCode>        opcodes[5]; // indexed by number of arguments
-    qi::symbols<char, Instruction::RegisterType>  register_prefixes;
     qi::symbols<char, InputSwizzlerMask>          swizzlers;
-    qi::symbols<char, RegisterNameType>           define_out_registers;
+    qi::symbols<char, OutputRegisterInfo::Type>   output_semantics;
+
+    // Rule-ified symbols, which can be assigned names
+    qi::rule<Iterator, Identifier(),              Skipper> known_identifier;
+    qi::rule<Iterator, OutputRegisterInfo::Type(),Skipper> output_semantics_rule;
+    qi::rule<Iterator, InputSwizzlerMask(),       Skipper> swizzle_mask;
+
+    // Building blocks
+    qi::rule<Iterator, std::string(),             Skipper> identifier;
+    qi::rule<Iterator, Expression(),              Skipper> expression;
+    qi::rule<Iterator, Instruction::OpCode(),     Skipper> opcode[5];
+
+    // Compounds
+    qi::rule<Iterator, DeclarationConstant(),     Skipper> declaration_constant;
+    qi::rule<Iterator, DeclarationOutput(),       Skipper> declaration_output;
+    qi::rule<Iterator, DeclarationAlias(),        Skipper> declaration_alias;
 
     qi::rule<Iterator, StatementInstruction(),    Skipper> instr[5];
-    qi::rule<Iterator, Instruction::OpCode(),     Skipper> opcode[5];
-    qi::rule<Iterator, std::string(),             Skipper> identifier;
     qi::rule<Iterator, Statement(),               Skipper> start;
-    qi::rule<Iterator, StatementRegisterName(),   Skipper> defineoutreg;
+    qi::rule<Iterator, StatementDeclaration(),    Skipper> declaration;
+
+    // Utility
     qi::rule<Iterator, Expression(),              Skipper> instr_extra_argument;
     qi::rule<Iterator,                            Skipper> not_comma;
-
-    qi::rule<Iterator, Expression(),              Skipper> expression;
-    qi::rule<Iterator, InputSwizzlerMask(),       Skipper> swizzle_mask;
 };
 
 enum class RegisterSpace : int {
@@ -575,32 +588,41 @@ int main(int argc, char* argv[])
             }
             ++program_write_offset;
         } else if (statement.which() == 2) {
-            auto& var = boost::get<StatementRegisterName>(statement);
+            auto& var = boost::get<StatementDeclaration>(statement);
 
-//            if (var.size() < /*3*/2)
-//                throw "Not enough arguments given for register name binding";
+            // TODO: check if valid identifiers are passed as arguments.
+            //       It e.g. shouldn't be possible to declare an input register as output.
 
-//            if (var[/*1*/0].which() != Token::Identifier || var[/*2*/1].which() != Token::Register)
-//                throw "Invalid arguments given for register name binding (got " + std::to_string(var[/*1*/0].which()) + " and " + std::to_string(var[/*2*/1].which()) + ", expected name and register, e.g. \".out_pos position o1\")";
+            Identifier id;
+            std::string idname;
 
-//            if (boost::fusion::at_c<1>(var[/*2*/1].GetRegister()) != boost::none)
-//                throw "Specifying a swizzler mask for binding register names is forbidden";
+            if (var.which() == 0) {
+                auto& var2 = boost::get<DeclarationConstant>(var);
+                id = boost::fusion::at_c<1>(var2);
+                idname = boost::fusion::at_c<0>(var2);
 
-/*            if (var.GetType() == StatementRegisterName::Constant) {
-                if (var.size() < 4)
-                    throw "Not enough arguments given for constant assignment";
+                // TODO: Add to output table
+            } else if (var.which() == 1) {
+                auto& var2 = boost::get<DeclarationOutput>(var);
+                id = boost::fusion::at_c<1>(var2);
+                idname = boost::fusion::at_c<0>(var2);
 
-                if (var[3].which() != Token::Constant)
-                    throw "Invalid arguments given for register name binding (expected name, register and value, e.g. \".const my_vector (0.4,0.2,0.1,0.0)\")";
-            }*/
+                // TODO: Add to constant table
+            } else if (var.which() == 2) {
+                auto& var2 = boost::get<DeclarationAlias>(var);
+                id = boost::fusion::at_c<1>(var2);
+                idname = boost::fusion::at_c<0>(var2);
 
-//            context.register_symbols.add( var.GetName().c_str(), var.GetRegisterWithIndex() );
-            Atomic ret = identifiers[boost::fusion::at_c<2>(var)];
+                // TODO: Add to uniform table
+            } else {
+                throw "meh";
+            }
+
+            Atomic ret = identifiers[id];
             Identifier new_identifier = identifiers.size();
             identifiers.push_back(ret);
-            context.identifiers.add(boost::fusion::at_c<1>(var), new_identifier);
+            context.identifiers.add(idname, new_identifier);
 
-            // TODO: Write names to output shbin
         }
     }
 
