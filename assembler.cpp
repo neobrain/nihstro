@@ -181,7 +181,18 @@ struct Token : boost::variant<Instruction::OpCode,
 
 using StatementLabel = std::string;
 
-struct StatementInstruction : std::vector<Token> {
+// TODO: Figure out why this cannot be a std::tuple...
+//struct StatementInstruction : std::tuple<Instruction::OpCode, std::vector<Token>> {
+struct StatementInstruction : boost::fusion::vector<Instruction::OpCode, std::vector<Token>> {
+    const Instruction::OpCode& GetOpCode() const {
+//        return std::get<0>(*this);
+        return boost::fusion::at_c<0>(*this);
+    }
+
+    std::vector<Token>& GetArguments() {
+//        return std::get<1>(*this);
+        return boost::fusion::at_c<1>(*this);
+    }
 };
 
 struct StatementRegisterName : std::vector<Token> {
@@ -300,8 +311,7 @@ struct AssemblyParser : qi::grammar<Iterator, Statement(), AssemblySkipper<Itera
         }
 
         // e.g. "add o1, t2, t5"
-        opcode_as_token = opcode[0];
-        instr[0] = opcode_as_token;
+        instr[0] = opcode[0] >> repeat(0)[token]; // add repeat(0) so that it matches against tuple<.,vector<.>>
 
 		auto comma_rule = qi::lit(',');
 		instr_extra_argument = comma_rule > token;
@@ -351,7 +361,6 @@ struct AssemblyParser : qi::grammar<Iterator, Statement(), AssemblySkipper<Itera
     qi::rule<Iterator, Statement(),               Skipper> start;
     qi::rule<Iterator, StatementRegisterName(),   Skipper> defineoutreg;
     qi::rule<Iterator, Token(),                   Skipper> token;
-    qi::rule<Iterator, Token(),                   Skipper> opcode_as_token;
     qi::rule<Iterator, Token(),                   Skipper> instr_extra_argument;
     qi::rule<Iterator,                            Skipper> not_comma;
 };
@@ -431,13 +440,11 @@ int main(int argc, char* argv[])
         } else if (statement.which() == 1) {
             auto& instr = boost::get<StatementInstruction>(statement);
 
-            if (!instr[0].HasType(Token::OpCode))
-                throw "Instruction statements need to start with an opcode";
-
             Instruction shinst;
             shinst.hex = 0;
-            shinst.opcode.Assign(instr[0].GetOpCode());
-            int num_args = instr.size() - 1;
+            shinst.opcode.Assign(instr.GetOpCode());
+            std::vector<Token>& arguments = instr.GetArguments();
+            int num_args = arguments.size();
             switch (shinst.opcode.GetInfo().type) {
                 case Instruction::OpCodeType::Arithmetic:
                 {
@@ -445,11 +452,11 @@ int main(int argc, char* argv[])
                     if (num_args != num_inputs + 1)
                         throw "Incorrect number of arguments. Expected " + std::to_string(num_inputs + 1) + ", got " + std::to_string(num_args);
 
-                    if (!instr[1].HasType(Token::Register))
-                        throw "Unexpected token in arithmetic instruction statement: Expected register identifier as destination argument but got type " + std::to_string(instr[1].which());
+                    if (!arguments[0].HasType(Token::Register))
+                        throw "Unexpected token in arithmetic instruction statement: Expected register identifier as destination argument but got type " + std::to_string(arguments[0].which());
 
-                    if (!instr[2].HasType(Token::Register))
-                        throw "Unexpected token in arithmetic instruction statement: Expected register identifier as first source argument but got type " + std::to_string(instr[2].which());
+                    if (!arguments[1].HasType(Token::Register))
+                        throw "Unexpected token in arithmetic instruction statement: Expected register identifier as first source argument but got type " + std::to_string(arguments[1].which());
 
                     auto AssertRegisterReadable = [](Instruction::RegisterType type) {
                         if (type != Instruction::Input && type != Instruction::Temporary &&
@@ -460,36 +467,36 @@ int main(int argc, char* argv[])
                         if (type != Instruction::Output && type != Instruction::Temporary)
                             throw "Specified register is not writeable (only output and temporary registers are writeable)";
                     };
-                    AssertRegisterWriteable(instr[1].GetRegister().GetType());
-                    AssertRegisterReadable(instr[2].GetRegister().GetType());
+                    AssertRegisterWriteable(arguments[0].GetRegister().GetType());
+                    AssertRegisterReadable(arguments[1].GetRegister().GetType());
 
                     // If no swizzler have been specified, use .xyzw - compile errors triggered by this are intended! (accessing subvectors should be done explicitly)
-                    InputSwizzlerMask input_dest_mask = instr[1].GetRegister().GetInputSwizzlerMask();
+                    InputSwizzlerMask input_dest_mask = arguments[0].GetRegister().GetInputSwizzlerMask();
                     InputSwizzlerMask input_mask_src1;
                     InputSwizzlerMask input_mask_src2;
                     if (num_inputs > 1) {
-                        if (!instr[3].HasType(Token::Register))
+                        if (!arguments[2].HasType(Token::Register))
                             throw "Unexpected token in arithmetic instruction statement: Expected register identifier as second source argument";
 
-                        AssertRegisterReadable(instr[3].GetRegister().GetType());
+                        AssertRegisterReadable(arguments[2].GetRegister().GetType());
 
-                        if (instr[2].GetRegister().GetType() == Instruction::FloatUniform &&
-                            instr[3].GetRegister().GetType() == Instruction::FloatUniform) {
+                        if (arguments[1].GetRegister().GetType() == Instruction::FloatUniform &&
+                            arguments[2].GetRegister().GetType() == Instruction::FloatUniform) {
                             throw "Not more than one input register may be a floating point uniform";
                         }
 
                         // If second argument is a floating point register, swap it to first place
-                        if (instr[3].GetRegister().GetType() == Instruction::FloatUniform) {
-                            boost::swap(instr[2], instr[3]);
+                        if (arguments[2].GetRegister().GetType() == Instruction::FloatUniform) {
+                            boost::swap(arguments[1], arguments[2]);
                         }
 
-                        shinst.common.src2.InitializeFromTypeAndIndex(instr[3].GetRegister().GetType(), instr[3].GetRegister().GetIndex());
-                        input_mask_src2 = instr[3].GetRegister().GetInputSwizzlerMask();
+                        shinst.common.src2.InitializeFromTypeAndIndex(arguments[2].GetRegister().GetType(), arguments[2].GetRegister().GetIndex());
+                        input_mask_src2 = arguments[2].GetRegister().GetInputSwizzlerMask();
                     }
-                    input_mask_src1 = instr[2].GetRegister().GetInputSwizzlerMask();
+                    input_mask_src1 = arguments[1].GetRegister().GetInputSwizzlerMask();
 
-                    shinst.common.dest.InitializeFromTypeAndIndex(instr[1].GetRegister().GetType(), instr[1].GetRegister().GetIndex());
-                    shinst.common.src1.InitializeFromTypeAndIndex(instr[2].GetRegister().GetType(), instr[2].GetRegister().GetIndex());
+                    shinst.common.dest.InitializeFromTypeAndIndex(arguments[0].GetRegister().GetType(), arguments[0].GetRegister().GetIndex());
+                    shinst.common.src1.InitializeFromTypeAndIndex(arguments[1].GetRegister().GetType(), arguments[1].GetRegister().GetIndex());
 
                     const bool is_dot_product = (shinst.opcode == Instruction::OpCode::DP3 ||
                                                  shinst.opcode == Instruction::OpCode::DP4);
