@@ -179,12 +179,12 @@ struct Token : boost::variant<Instruction::OpCode,
     }
 };
 
-using TokenSequenceLabel = std::string;
+using StatementLabel = std::string;
 
-struct TokenSequenceInstruction : std::vector<Token> {
+struct StatementInstruction : std::vector<Token> {
 };
 
-struct TokenSequenceRegisterName : std::vector<Token> {
+struct StatementRegisterName : std::vector<Token> {
     // TODO: Will likely want to specify output semantics here, too!
 
     // TODO: Binding type is not really supported yet... hence all indices are off by one
@@ -222,9 +222,9 @@ struct TokenSequenceRegisterName : std::vector<Token> {
     }
 };
 
-using TokenSequence = boost::variant<TokenSequenceLabel,
-                                     TokenSequenceInstruction,
-                                     TokenSequenceRegisterName>;
+using Statement = boost::variant<StatementLabel,
+                                 StatementInstruction,
+                                 StatementRegisterName>;
 
 struct ParserContext {
     qi::symbols<char, TokenRegisterWithIndex> register_symbols;
@@ -232,7 +232,7 @@ struct ParserContext {
 
 
 template<typename Iterator>
-struct AssemblyParser : qi::grammar<Iterator, TokenSequence(), AssemblySkipper<Iterator>> {
+struct AssemblyParser : qi::grammar<Iterator, Statement(), AssemblySkipper<Iterator>> {
     using Skipper = AssemblySkipper<Iterator>;
 
     AssemblyParser(const ParserContext& context) : AssemblyParser::base_type(start) {
@@ -280,9 +280,9 @@ struct AssemblyParser : qi::grammar<Iterator, TokenSequence(), AssemblySkipper<I
                      ( "yzw",  {3, {InputSwizzlerMask::y,InputSwizzlerMask::z,InputSwizzlerMask::w}} )
                      ( "xyzw", {4, {InputSwizzlerMask::x,InputSwizzlerMask::y,InputSwizzlerMask::z,InputSwizzlerMask::w}} );
 
-        define_out_registers.add("out_pos", TokenSequenceRegisterName::OutputPos);
-        define_out_registers.add("alias", TokenSequenceRegisterName::Input);
-        define_out_registers.add("const", TokenSequenceRegisterName::Constant);
+        define_out_registers.add("out_pos", StatementRegisterName::OutputPos);
+        define_out_registers.add("alias", StatementRegisterName::Input);
+        define_out_registers.add("const", StatementRegisterName::Constant);
 
         // Setup rules
         identifier = qi::lexeme[+(qi::char_("a-zA-Z_")) >> -+qi::char_("0-9")];
@@ -342,14 +342,14 @@ struct AssemblyParser : qi::grammar<Iterator, TokenSequence(), AssemblySkipper<I
     qi::symbols<char, Instruction::OpCode>        opcodes[5]; // indexed by number of arguments
     qi::symbols<char, Instruction::RegisterType>  register_prefixes;
     qi::symbols<char, InputSwizzlerMask>          swizzlers;
-    qi::symbols<char, TokenSequenceRegisterName::Type> define_out_registers;
+    qi::symbols<char, StatementRegisterName::Type> define_out_registers;
 
-    qi::rule<Iterator, TokenSequenceInstruction(),Skipper> instr[5];
+    qi::rule<Iterator, StatementInstruction(),    Skipper> instr[5];
     qi::rule<Iterator, Instruction::OpCode(),     Skipper> opcode[5];
     qi::rule<Iterator, std::string(),             Skipper> identifier;
     qi::rule<Iterator, TokenRegister(),           Skipper> register_rule;
-    qi::rule<Iterator, TokenSequence(),           Skipper> start;
-    qi::rule<Iterator, TokenSequenceRegisterName(), Skipper> defineoutreg;
+    qi::rule<Iterator, Statement(),               Skipper> start;
+    qi::rule<Iterator, StatementRegisterName(),   Skipper> defineoutreg;
     qi::rule<Iterator, Token(),                   Skipper> token;
     qi::rule<Iterator, Token(),                   Skipper> opcode_as_token;
     qi::rule<Iterator, Token(),                   Skipper> instr_extra_argument;
@@ -411,13 +411,13 @@ int main(int argc, char* argv[])
     while (true) {
         AssemblyParser<std::string::iterator> parser(context);
         AssemblySkipper<std::string::iterator> skipper;
-        TokenSequence token_sequence;
+        Statement statement;
 
-        if (false == phrase_parse(begin, input_code.end(), parser, skipper, token_sequence))
+        if (false == phrase_parse(begin, input_code.end(), parser, skipper, statement))
             break;
 
-        if (token_sequence.which() == 0) {
-            std::string label_symbol = boost::get<TokenSequenceLabel>(token_sequence);
+        if (statement.which() == 0) {
+            std::string label_symbol = boost::get<StatementLabel>(statement);
 
             auto it = std::find(symbol_table.begin(), symbol_table.end(), label_symbol);
             if (it != symbol_table.end())
@@ -428,8 +428,8 @@ int main(int argc, char* argv[])
 
             CustomLabelInfo label_info = { program_write_offset, symbol_table_index };
             label_table.push_back(label_info);
-        } else if (token_sequence.which() == 1) {
-            auto& instr = boost::get<TokenSequenceInstruction>(token_sequence);
+        } else if (statement.which() == 1) {
+            auto& instr = boost::get<StatementInstruction>(statement);
 
             if (!instr[0].HasType(Token::OpCode))
                 throw "Instruction statements need to start with an opcode";
@@ -561,8 +561,8 @@ int main(int argc, char* argv[])
                     break;
             }
             ++program_write_offset;
-        } else if (token_sequence.which() == 2) {
-            auto& var = boost::get<TokenSequenceRegisterName>(token_sequence);
+        } else if (statement.which() == 2) {
+            auto& var = boost::get<StatementRegisterName>(statement);
 
             if (var.size() < /*3*/2)
                 throw "Not enough arguments given for register name binding";
@@ -573,7 +573,7 @@ int main(int argc, char* argv[])
             if (boost::fusion::at_c<1>(var[/*2*/1].GetRegister()) != boost::none)
                 throw "Specifying a swizzler mask for binding register names is forbidden";
 
-/*            if (var.GetType() == TokenSequenceRegisterName::Constant) {
+/*            if (var.GetType() == StatementRegisterName::Constant) {
                 if (var.size() < 4)
                     throw "Not enough arguments given for constant assignment";
 
