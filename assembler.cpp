@@ -225,8 +225,9 @@ struct AssemblyParser : qi::grammar<Iterator, Statement(), AssemblySkipper<Itera
 
         auto label = identifier >> qi::lit(':');
 
+        opcode[0] = qi::no_case[qi::lexeme[opcodes[0]]];
 		for (int i = 0; i < 5; ++i) {
-            // Make sure that a mnemonic is always followed by a space
+            // Make sure that a mnemonic is always followed by a space if it expects an argument
             opcode[i] = qi::no_case[qi::lexeme[opcodes[i] >> qi::omit[ascii::blank]]];
         }
 
@@ -295,11 +296,11 @@ struct AssemblyParser : qi::grammar<Iterator, Statement(), AssemblySkipper<Itera
     qi::rule<Iterator, Identifier(),              Skipper> known_identifier;
     qi::rule<Iterator, OutputRegisterInfo::Type(),Skipper> output_semantics_rule;
     qi::rule<Iterator, InputSwizzlerMask(),       Skipper> swizzle_mask;
+    qi::rule<Iterator, Instruction::OpCode(),     Skipper> opcode[5];
 
     // Building blocks
     qi::rule<Iterator, std::string(),             Skipper> identifier;
     qi::rule<Iterator, Expression(),              Skipper> expression;
-    qi::rule<Iterator, Instruction::OpCode(),     Skipper> opcode[5];
 
     // Compounds
     qi::rule<Iterator, DeclarationConstant(),     Skipper> declaration_constant;
