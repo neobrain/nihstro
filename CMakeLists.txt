@@ -10,7 +10,7 @@ add_executable(nihstro-disassemble main.cpp)
 
 if(Boost_FOUND)
     include_directories(${Boost_INCLUDE_DIRS})
-    add_executable(nihstro-assemble assembler.cpp)
+    add_executable(nihstro-assemble assembler.cpp parser_assembly.cpp)
 else()
     message(WARNING "Boost not found => not building assembler")
 endif()
