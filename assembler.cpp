@@ -263,11 +263,11 @@ struct AssemblyParser : qi::grammar<Iterator, Statement(), AssemblySkipper<Itera
             opcode[i] = qi::no_case[qi::lexeme[opcodes[i] >> qi::omit[ascii::blank]]];
         }
 
-        expression = known_identifier >> *(comma_rule > swizzle_mask);
+        expression = known_identifier >> *(qi::lit('.') > swizzle_mask);
 
         expression_chain[1] = expression;
 		for (int i = 2; i < 5; ++i) {
-            expression_chain[i] = expression_chain[i - 1] >> comma_rule >> expression;
+            expression_chain[i] = expression_chain[i - 1] >> comma_rule > expression;
         }
 
         // e.g. "add o1, t2, t5"
