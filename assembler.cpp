@@ -77,7 +77,31 @@ struct InputSwizzlerMask {
     bool operator == (const InputSwizzlerMask& oth) const {
         return 0 == memcmp(this, &oth, sizeof(InputSwizzlerMask));
     }
+
+    friend std::ostream& operator<<(std::ostream& os, const Component& v) {
+        switch(v) {
+            case x:  return os << "x";
+            case y:  return os << "y";
+            case z:  return os << "z";
+            case w:  return os << "w";
+            default: return os << "?";
+        }
+    }
+    friend std::ostream& operator<<(std::ostream& os, const InputSwizzlerMask& v) {
+        if (!v.num_components)
+            return os << "(empty_mask)";
+
+        for (int i = 0; i < v.num_components; ++i)
+            os << v.components[i];
+
+        return os;
+    }
 };
+
+std::ostream& operator<<(std::ostream& os, const Instruction::OpCode& opcode) {
+    // TODO: Should print actual opcode here..
+    return os << static_cast<uint32_t>(opcode);
+}
 
 struct DestSwizzlerMask {
     DestSwizzlerMask(const InputSwizzlerMask& input) : component_set{false, false, false, false} {
@@ -139,6 +163,11 @@ using StatementLabel = std::string;
 
 // TODO: Figure out why this cannot be a std::tuple...
 struct StatementInstruction : boost::fusion::vector<Instruction::OpCode, std::vector<Expression>> {
+    StatementInstruction() = default;
+
+    StatementInstruction(const Instruction::OpCode& opcode) : boost::fusion::vector<Instruction::OpCode, std::vector<Expression>>(opcode, std::vector<Expression>()) {
+    }
+
     const Instruction::OpCode& GetOpCode() const {
         return boost::fusion::at_c<0>(*this);
     }
@@ -147,7 +176,6 @@ struct StatementInstruction : boost::fusion::vector<Instruction::OpCode, std::ve
         return boost::fusion::at_c<1>(*this);
     }
 };
-
 
 //using DeclarationConstant = boost::fusion::vector<std::string, Identifier, std::vector<float>>;
 struct DeclarationConstant : boost::fusion::vector<std::string, Identifier, std::vector<float>> {
@@ -220,36 +248,35 @@ struct AssemblyParser : qi::grammar<Iterator, Statement(), AssemblySkipper<Itera
         output_semantics_rule = qi::lexeme[output_semantics];
 
         // Setup rules
+
+        auto comma_rule = qi::lit(',');
+
+        // TODO: Something like test5bla should be allowed, too
         identifier = qi::lexeme[+(qi::char_("a-zA-Z_")) >> -+qi::char_("0-9")];
         known_identifier = qi::lexeme[context.identifiers];
 
-        auto label = identifier >> qi::lit(':');
+        label = identifier >> qi::lit(':');
 
         opcode[0] = qi::no_case[qi::lexeme[opcodes[0]]];
-		for (int i = 0; i < 5; ++i) {
+        for (int i = 1; i < 5; ++i) {
             // Make sure that a mnemonic is always followed by a space if it expects an argument
             opcode[i] = qi::no_case[qi::lexeme[opcodes[i] >> qi::omit[ascii::blank]]];
         }
 
-        expression = known_identifier >> *(qi::lit('.') >> swizzle_mask);
+        expression = known_identifier >> *(comma_rule > swizzle_mask);
+
+        expression_chain[1] = expression;
+		for (int i = 2; i < 5; ++i) {
+            expression_chain[i] = expression_chain[i - 1] >> comma_rule >> expression;
+        }
 
         // e.g. "add o1, t2, t5"
-        // TODO: Using > instead of >> would break the argument number detection, for whatever reason...
-        //       It would match whole lines, but never read more than one argument. Strange.
-		auto comma_rule = qi::lit(',');
-		instr_extra_argument = comma_rule >> expression;
         not_comma = !comma_rule;
-        // TODO: These don't work for reasons I don't understand. need to fix that somehow...
-//        instr[0] = opcode[0] >> repeat(0)[expression] >> not_comma; // add repeat(0) so that it matches against tuple<.,vector<.>>
-//        instr[1] = opcode[1] >> expression >> not_comma;
-//        instr[2] = opcode[2] >> expression >> instr_extra_argument >> not_comma;
-//        instr[3] = opcode[3] >> expression >> instr_extra_argument >> instr_extra_argument >> not_comma;
-//        instr[4] = opcode[4] >> expression >> instr_extra_argument >> instr_extra_argument >> instr_extra_argument >> not_comma;
-        instr[0] = opcode[0] >> (expression % qi::lit(',')) >> not_comma;
-        instr[1] = opcode[1] >> (expression % qi::lit(',')) >> not_comma;
-        instr[2] = opcode[2] >> (expression % qi::lit(',')) >> not_comma;
-        instr[3] = opcode[3] >> (expression % qi::lit(',')) >> not_comma;
-        instr[4] = opcode[4] >> (expression % qi::lit(',')) >> not_comma;
+        instr[0] = opcode[0] > not_comma;
+        instr[1] = opcode[1] > expression_chain[1] > not_comma;
+        instr[2] = opcode[2] > expression_chain[2] > not_comma;
+        instr[3] = opcode[3] > expression_chain[3] > not_comma;
+        instr[4] = opcode[4] > expression_chain[4] > not_comma;
 
         declaration_output = qi::omit[qi::lexeme["out" >> ascii::blank]] > identifier > context.identifiers > output_semantics;
         declaration_constant = qi::omit[qi::lexeme["const "]] >> identifier > context.identifiers
@@ -261,14 +288,35 @@ struct AssemblyParser : qi::grammar<Iterator, Statement(), AssemblySkipper<Itera
         // TODO: Expect a newline at the end of things...
         start %= label | (instr[0] | instr[1] | instr[2] | instr[3] | instr[4]) | declaration;
 
-		// Error handling
-        instr_extra_argument.name("additional argument");
+        // Error handling
         not_comma.name("not comma");
         expression.name("expression");
         swizzle_mask.name("swizzle mask");
         identifier.name("identifier");
         known_identifier.name("known identifier");
         output_semantics_rule.name("output semantic");
+
+        expression_chain[1].name("1 argument");
+        expression_chain[2].name("2 arguments");
+        expression_chain[3].name("3 arguments");
+        expression_chain[4].name("4 arguments");
+
+        label.name("label");
+        instr[0].name("instr[0]");
+        instr[1].name("instr[1]");
+        instr[2].name("instr[2]");
+        instr[3].name("instr[3]");
+        instr[4].name("instr[4]");
+        declaration.name("declaration");
+
+        debug(label);
+        debug(instr[0]);
+        debug(instr[1]);
+        debug(instr[2]);
+        debug(instr[3]);
+        debug(instr[4]);
+        debug(declaration);
+        debug(start);
 
         // TODO: Make these error messages more helpful...
         // _1: Iterator first
@@ -300,7 +348,9 @@ struct AssemblyParser : qi::grammar<Iterator, Statement(), AssemblySkipper<Itera
 
     // Building blocks
     qi::rule<Iterator, std::string(),             Skipper> identifier;
+    qi::rule<Iterator, std::string(),             Skipper> label;
     qi::rule<Iterator, Expression(),              Skipper> expression;
+    qi::rule<Iterator, std::vector<Expression>(), Skipper> expression_chain[5]; // sequence of instruction arguments
 
     // Compounds
     qi::rule<Iterator, DeclarationConstant(),     Skipper> declaration_constant;
@@ -312,7 +362,6 @@ struct AssemblyParser : qi::grammar<Iterator, Statement(), AssemblySkipper<Itera
     qi::rule<Iterator, StatementDeclaration(),    Skipper> declaration;
 
     // Utility
-    qi::rule<Iterator, Expression(),              Skipper> instr_extra_argument;
     qi::rule<Iterator,                            Skipper> not_comma;
 };
 
@@ -430,6 +479,10 @@ int main(int argc, char* argv[])
         AssemblySkipper<std::string::iterator> skipper;
         Statement statement;
 
+        // First off, move iterator past preceding comments, blanks, etc
+        parse(begin, input_code.end(), skipper, statement);
+
+        // Now perform the actual parsing
         preparse_begin = begin;
         if (false == phrase_parse(begin, input_code.end(), parser, skipper, statement))
             break;
