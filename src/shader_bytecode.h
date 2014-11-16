@@ -173,6 +173,13 @@ union Instruction {
         // Address register value is used for relative addressing of src1
         BitField<0x13, 0x2, uint32_t> address_register_index;
 
+        std::string AddressRegisterName() const {
+            if (address_register_index == 0) return "";
+            else if (address_register_index == 1) return "a0";
+            else if (address_register_index == 2) return "a1";
+            else /*if (address_register_index == 3)*/ return "lcnt";
+        }
+
         struct : BitField<0x15, 0x5, uint32_t>
         {
             RegisterType GetRegisterType() const {

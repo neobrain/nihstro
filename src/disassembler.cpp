@@ -250,7 +250,7 @@ public:
     }
 
     template<class T>
-    std::string LookupSourceName(const T& source) {
+    std::string LookupSourceName(const T& source, unsigned addr_reg_index) {
         if (source.GetRegisterType() != Instruction::Temporary) {
             for (const auto& uniform_info : uniform_table) {
                 // Magic numbers are needed because uniform info registers use the
@@ -258,10 +258,24 @@ public:
                 // i.e. there is a "gap" at the temporary registers, for which no
                 // name can be assigned (?).
                 int off = (source.GetRegisterType() == Instruction::Input) ? 0 : 0x10;
-
                 if (source - off >= uniform_info.basic.reg_start &&
                     source - off <= uniform_info.basic.reg_end) {
-                    return uniform_info.name;
+                    std::string name = uniform_info.name;
+
+                    std::string index;
+                    bool is_array = uniform_info.basic.reg_end != uniform_info.basic.reg_start;
+                    if (is_array) {
+                        index += std::to_string(source - off - uniform_info.basic.reg_start);
+                    }
+                    if (addr_reg_index != 0) {
+                        index += (is_array) ? " + " : "";
+                        index += "a" + std::to_string(addr_reg_index - 1);
+                    }
+
+                    if (!index.empty())
+                        name += "[" + index +  "]";
+
+                    return name;
                 }
             }
         }
@@ -423,11 +437,17 @@ int main(int argc, char *argv[])
         case Instruction::OpCode::RCP:
         case Instruction::OpCode::RSQ:
         case Instruction::OpCode::MOV:
+        {
+            std::string src1_relative_address;
+            if (!instr.common.AddressRegisterName().empty())
+                src1_relative_address = "[" + instr.common.AddressRegisterName() + "]";
+
             std::cout << std::setw(4) << std::right << instr.common.dest.GetName() << "." << swizzle.DestMaskToString() << "  "
-                      << std::setw(4) << std::right << ((swizzle.negate_src1 ? "-" : " ") + instr.common.src1.GetName()) << "." << swizzle.SelectorToString(false) << "   "
+                      << std::setw(8) << std::right << ((swizzle.negate_src1 ? "-" : " ") + instr.common.src1.GetName()) << "." << swizzle.SelectorToString(false) << "   "
                       << "           " << std::setw(2) << instr.common.operand_desc_id.Value() << " addr:" << instr.common.address_register_index.Value()
-                      << ";      " << parser.LookupDestName(instr.common.dest, swizzle) << " <-  " << parser.LookupSourceName(instr.common.src1) << std::endl;
+                      << ";      " << parser.LookupDestName(instr.common.dest, swizzle) << " <-  " << (swizzle.negate_src1 ? "-" : " ") + parser.LookupSourceName(instr.common.src1, instr.common.address_register_index) << std::endl;
             break;
+        }
 
         // common, uses DEST, SRC1 and SRC2:
         case Instruction::OpCode::ADD:
@@ -436,12 +456,18 @@ int main(int argc, char *argv[])
         case Instruction::OpCode::MUL:
         case Instruction::OpCode::MAX:
         case Instruction::OpCode::MIN:
+        {
+            std::string src1_relative_address;
+            if (!instr.common.AddressRegisterName().empty())
+                src1_relative_address = "[" + instr.common.AddressRegisterName() + "]";
+
             std::cout << std::setw(4) << std::right << instr.common.dest.GetName() << "." << swizzle.DestMaskToString() << "  "
-                      << std::setw(4) << std::right << ((swizzle.negate_src1 ? "-" : "") + instr.common.src1.GetName()) << "." << swizzle.SelectorToString(false) << "  "
-                      << std::setw(4) << std::right << instr.common.src2.GetName() << "." << swizzle.SelectorToString(true) << "   "
+                      << std::setw(8) << std::right << ((swizzle.negate_src1 ? "-" : "") + instr.common.src1.GetName()) + src1_relative_address << "." << swizzle.SelectorToString(false) << "  "
+                      << std::setw(4) << std::right << (swizzle.negate_src2 ? "-" : "") + instr.common.src2.GetName() << "." << swizzle.SelectorToString(true) << "   "
                       << std::setw(2) << instr.common.operand_desc_id.Value() << " addr:" << instr.common.address_register_index.Value()
-                      << ";      " << parser.LookupDestName(instr.common.dest, swizzle) << " <- " << parser.LookupSourceName(instr.common.src1) << ", " << parser.LookupSourceName(instr.common.src2) << std::endl;
+                      << ";      " << parser.LookupDestName(instr.common.dest, swizzle) << " <- " << (swizzle.negate_src1 ? "-" : "") + parser.LookupSourceName(instr.common.src1, instr.common.address_register_index) << ", " << (swizzle.negate_src2 ? "-" : "") + parser.LookupSourceName(instr.common.src2, 0) << std::endl;
             break;
+        }
 
         case Instruction::OpCode::CALL:
             std::cout << "to 0x" << std::setw(4) << std::right << std::setfill('0') << 4 * instr.flow_control.offset_words << std::setfill(' ') << "  ("
@@ -460,7 +486,7 @@ int main(int argc, char *argv[])
     for (int i = 0; i < parser.GetDVLPHeader().swizzle_info_num_entries; ++i) {
         const auto& info = parser.swizzle_info[i];
         const auto& pattern = info.pattern;
-        std::cout << "(" << std::setw(3) << std::right << std::hex << i << ") " << std::setw(8) << pattern.hex << ": " << pattern.dest_mask.Value() << "   " <<
+        std::cout << "(" << std::setw(3) << std::right << std::hex << i << ") " << std::setw(8) << std::setfill('0') << pattern.hex << ": " << pattern.dest_mask.Value() << "   " <<
                      " " << (int)pattern.negate_src1 << "  " <<
                      " " << (int)pattern.src1_selector_3.Value() << " " << (int)pattern.src1_selector_2.Value() <<
                      " " << (int)pattern.src1_selector_1.Value() << " " << (int)pattern.src1_selector_0.Value() << "   " <<
