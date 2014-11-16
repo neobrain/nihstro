@@ -425,7 +425,7 @@ int main(int argc, char *argv[])
         case Instruction::OpCode::MOV:
             std::cout << std::setw(4) << std::right << instr.common.dest.GetName() << "." << swizzle.DestMaskToString() << "  "
                       << std::setw(4) << std::right << ((swizzle.negate_src1 ? "-" : " ") + instr.common.src1.GetName()) << "." << swizzle.SelectorToString(false) << "   "
-                      << "           " << std::setw(2) << instr.common.operand_desc_id.Value() << " flag:" << instr.common.unk2.Value()
+                      << "           " << std::setw(2) << instr.common.operand_desc_id.Value() << " addr:" << instr.common.address_register_index.Value()
                       << ";      " << parser.LookupDestName(instr.common.dest, swizzle) << " <-  " << parser.LookupSourceName(instr.common.src1) << std::endl;
             break;
 
@@ -439,7 +439,7 @@ int main(int argc, char *argv[])
             std::cout << std::setw(4) << std::right << instr.common.dest.GetName() << "." << swizzle.DestMaskToString() << "  "
                       << std::setw(4) << std::right << ((swizzle.negate_src1 ? "-" : "") + instr.common.src1.GetName()) << "." << swizzle.SelectorToString(false) << "  "
                       << std::setw(4) << std::right << instr.common.src2.GetName() << "." << swizzle.SelectorToString(true) << "   "
-                      << std::setw(2) << instr.common.operand_desc_id.Value() << " flag:" << instr.common.unk2.Value()
+                      << std::setw(2) << instr.common.operand_desc_id.Value() << " addr:" << instr.common.address_register_index.Value()
                       << ";      " << parser.LookupDestName(instr.common.dest, swizzle) << " <- " << parser.LookupSourceName(instr.common.src1) << ", " << parser.LookupSourceName(instr.common.src2) << std::endl;
             break;
 
@@ -461,14 +461,16 @@ int main(int argc, char *argv[])
         const auto& info = parser.swizzle_info[i];
         const auto& pattern = info.pattern;
         std::cout << "(" << std::setw(3) << std::right << std::hex << i << ") " << std::setw(8) << pattern.hex << ": " << pattern.dest_mask.Value() << "   " <<
-                     " " << ((pattern.hex>>4)&1) << "   " <<
+                     " " << (int)pattern.negate_src1 << "  " <<
                      " " << (int)pattern.src1_selector_3.Value() << " " << (int)pattern.src1_selector_2.Value() <<
                      " " << (int)pattern.src1_selector_1.Value() << " " << (int)pattern.src1_selector_0.Value() << "   " <<
-                     " " << ((pattern.hex>>13)&1) << "   " <<
+                     " " << (int)pattern.negate_src2 << "  " <<
                      " " << (int)pattern.src2_selector_3.Value() << " " << (int)pattern.src2_selector_2.Value() <<
                      " " << (int)pattern.src2_selector_1.Value() << " " << (int)pattern.src2_selector_0.Value() << "   " <<
-                     " " << std::setw(3) << ((pattern.hex>>22)&0x1FF) << "   " <<
-                     " " << (int)pattern.flag.Value() << "    " << std::setw(8) << std::setfill('0') << info.unknown << std::setfill(' ') << std::endl;
+                     " " << (int)pattern.negate_src3 << "  " <<
+                     " " << (int)pattern.src3_selector_3.Value() << " " << (int)pattern.src3_selector_2.Value() <<
+                     " " << (int)pattern.src3_selector_1.Value() << " " << (int)pattern.src3_selector_0.Value() << "   " <<
+                     " " <<  std::setw(8) << std::setfill('0') << info.unknown << std::setfill(' ') << std::endl;
     }
 
     return 0;

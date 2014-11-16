@@ -170,7 +170,8 @@ union Instruction {
         SourceRegister<BitField<0x07, 0x5, uint32_t>> src2;
         SourceRegister<BitField<0x0c, 0x7, uint32_t>> src1;
 
-        BitField<0x13, 0x2, uint32_t> unk2; // 3dbrew calls this FLAG
+        // Address register value is used for relative addressing of src1
+        BitField<0x13, 0x2, uint32_t> address_register_index;
 
         struct : BitField<0x15, 0x5, uint32_t>
         {
@@ -310,18 +311,22 @@ union SwizzlePattern {
     BitField< 0, 4, uint32_t> dest_mask;
 
     BitField< 4, 1, uint32_t> negate_src1;
-
     BitField< 5, 2, Selector> src1_selector_3;
     BitField< 7, 2, Selector> src1_selector_2;
     BitField< 9, 2, Selector> src1_selector_1;
     BitField<11, 2, Selector> src1_selector_0;
 
+    BitField<13, 1, uint32_t> negate_src2;
     BitField<14, 2, Selector> src2_selector_3;
     BitField<16, 2, Selector> src2_selector_2;
     BitField<18, 2, Selector> src2_selector_1;
     BitField<20, 2, Selector> src2_selector_0;
 
-    BitField<31, 1, uint32_t> flag; // not sure what this is
+    BitField<22, 1, uint32_t> negate_src3;
+    BitField<23, 2, Selector> src3_selector_3;
+    BitField<25, 2, Selector> src3_selector_2;
+    BitField<27, 2, Selector> src3_selector_1;
+    BitField<29, 2, Selector> src3_selector_0;
 };
 static_assert(sizeof(SwizzlePattern) == 0x4, "Incorrect structure size");
 
