@@ -43,11 +43,12 @@ enum class RegisterSpace : int {
 };
 
 // Smallest unit an expression evaluates to:
-// Index to register + number of components + swizzle mask
+// Index to register + number of components + swizzle mask + sign
 // Labels are different.
 struct Atomic {
     int register_index;
     InputSwizzlerMask mask;
+    bool negate;
 
     const Instruction::RegisterType GetType() const {
         if (register_index >= (int)RegisterSpace::Output)
@@ -227,10 +228,13 @@ int main(int argc, char* argv[])
             std::vector<Atomic> arguments;
             for (const auto& expr : args) {
                 auto EvaluateExpression = [](const Expression& expr) {
-                    Atomic ret = identifiers[boost::fusion::at_c<0>(expr)];
+                    Atomic ret = identifiers[boost::fusion::at_c<1>(expr)];
+
+                    auto sign = boost::fusion::at_c<0>(expr);
+                    ret.negate = (sign && sign == -1);
 
                     // Apply swizzle mask(s)
-                    for (const auto& swizzle_mask : boost::fusion::at_c<1>(expr)) {
+                    for (const auto& swizzle_mask : boost::fusion::at_c<2>(expr)) {
                         // TODO: Error out if the swizzle masks can't actually be merged..
 
                         InputSwizzlerMask out;
@@ -314,6 +318,8 @@ int main(int argc, char* argv[])
                     }
 
                     // Build swizzle patterns
+                    // TODO: In the case of "few arguments", we can re-use patterns created with
+                    //       larger argument lists to optimize pattern count.
                     SwizzlePattern swizzle_pattern;
                     swizzle_pattern.hex = 0;
 
@@ -339,7 +345,10 @@ int main(int argc, char* argv[])
                             swizzle_pattern.SetSelectorSrc2(i, static_cast<SwizzlePattern::Selector>(mask_src2.components[i]));
                     }
 
-                    // TODO: support other fields in SwizzlePattern (e.g. negate_src1)
+                    swizzle_pattern.negate_src1 = arguments[1].negate;
+                    if (num_inputs > 1)
+                        swizzle_pattern.negate_src2 = arguments[2].negate;
+
                     auto it = std::find_if(swizzle_patterns.begin(), swizzle_patterns.end(),
                                             [&swizzle_pattern](const SwizzlePattern& val) { return val.hex == swizzle_pattern.hex; });
                     if (it == swizzle_patterns.end()) {

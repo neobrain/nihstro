@@ -81,7 +81,10 @@ struct InputSwizzlerMask {
 // Identifer index in identifier list
 using Identifier = int;
 
-using Expression = boost::fusion::vector<Identifier, std::vector<InputSwizzlerMask>>;
+// A sign, i.e. +1 or -1
+using Sign = int;
+
+using Expression = boost::fusion::vector<boost::optional<Sign>, Identifier, std::vector<InputSwizzlerMask>>;
 
 using StatementLabel = std::string;
 
