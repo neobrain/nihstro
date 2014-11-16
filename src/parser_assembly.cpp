@@ -66,6 +66,9 @@ struct CommonRules {
 
     CommonRules(const ParserContext& context) {
 
+        signs.add( "+", +1)
+                 ( "-", -1);
+
         // TODO: Might want to change to only have "x", "y", "z" and "w"
         // TODO: Add rgba/stq masks
         swizzlers.add( "x",    {1, {InputSwizzlerMask::x}} )
@@ -89,7 +92,7 @@ struct CommonRules {
         identifier = qi::lexeme[+(qi::char_("a-zA-Z_")) >> -+qi::char_("0-9")];
         known_identifier = qi::lexeme[context.identifiers];
 
-        expression = known_identifier >> *(qi::lit('.') > swizzle_mask);
+        expression = (-signs) >> known_identifier >> *(qi::lit('.') > swizzle_mask);
 
         // Error handling
         expression.name("expression");
@@ -104,6 +107,8 @@ struct CommonRules {
     // Building blocks
     qi::rule<Iterator, std::string(),             Skipper> identifier;
     qi::rule<Iterator, Expression(),              Skipper> expression;
+
+    qi::symbols<char, int> signs;
 
     qi::symbols<char, InputSwizzlerMask>          swizzlers;
     qi::rule<Iterator, InputSwizzlerMask(),       Skipper> swizzle_mask;
