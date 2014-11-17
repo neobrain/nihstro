@@ -82,10 +82,10 @@ union Instruction {
 
     static std::string GetRegisterName(RegisterType type) {
         std::map<RegisterType, std::string> map = {
-            { Input, "i" },
+            { Input, "v" },
             { Output, "o" },
-            { Temporary, "t" },
-            { FloatUniform, "f" },
+            { Temporary, "r" },
+            { FloatUniform, "c" },
             { Unknown, "u" },
         };
         return map[type];
