@@ -18,11 +18,11 @@ each of which is defined in its own section below. Additionally, comments may be
 A pseudo-code example of nihcode looks like this:
 
     // First example shaders
-    .alias input i0         // alias declaration
+    .alias input v0         // alias declaration
     .out pos o0 position // alias declaration
 
     main:                   // label declaration
-        mov o0, i0          // instruction
+        mov o0, v0          // instruction
         flush               // instruction
         ret                 // instruction
 
@@ -31,9 +31,9 @@ A pseudo-code example of nihcode looks like this:
 A shader can access a number of different registers with different meaning. The raw input vertex attribute data is read via *input registers*, while the output vertex attributes used for rendering is written to *output registers*. External programs can pass parameters to the shader by setting *uniforms*. Additionally, a number of *temporary registers* are free for any use. Each of these registers refers to a 4-component vector.
 
 Registers are being referred to by using *identifiers*. There is a number of builtin identifiers, each of which refers to one register:
-* `i0`-`i15`: Input registers (read-only)
-* `t0`-`t15`: Temporary registers (read-write)
-* `f0`-`f95`: Float uniforms (read-only)
+* `v0`-`v15`: Input registers (read-only)
+* `r0`-`r15`: Temporary registers (read-write)
+* `c0`-`c95`: Float uniforms (read-only)
 * `o0`-`o15`: Output registers (write-only)
 
 Purely for readability, one can also define new identifiers, as explained below. Identifiers may only use a restricted set of names including lower- or uppercase letters a-Z, underscores, and decimal digits (the latter two which may not be used as the first character of the name). Additionally, an identifier may be followed by a swizzle mask, separated by the character `.` (e.g. `texcoord.xzw`). Swizzle masks allow for reordering, duplicating, and removing of one or more vector components of the identified register (without actually modifying this register).
@@ -50,7 +50,7 @@ The following names are reserved identifiers, and may not be used during declara
 
 Declares a new identifier called `new_identifier` which refers to the same register that `existing_identifier` refers to. In particular, aliases can be used to give a compact name for a register and a fixed swizzle mask. Aliases may be used on any identifier, however it should be noted that identifiers for output registers should generally be defined via `.out` (see below).
 
-E.g. `.alias input_texture i2.xy`
+E.g. `.alias input_texture v2.xy`
 
 ### Output Declarations (outputs)
 `.out new_identifier existing_identifier semantic`
@@ -66,7 +66,7 @@ vector constants: `.const new_identifier existing_identifier (x, y(, z(, w)))`
 
 Declares a new identifier called `new_identifier` which refers to a uniform register given by `existing_identifier`. Unless all components of the target register are given, `existing_identifier` must use a swizzle mask to specify how to store the constants. 
 
-E.g. `.const my_const f4.xyw (0.1, 3.2, -3.14)`
+E.g. `.const my_const c4.xyw (0.1, 3.2, -3.14)`
 
 ##Label Declarations
 `labelname:`
@@ -80,7 +80,7 @@ Writes the given opcode to the shader binary. The number of required expressions
 
 An expression is constituted of an optional sign and an identifier.
 
-E.g. `.mul o3.xyz f4.xyz i0.xyz`
+E.g. `.mul o3.xyz c4.xyz v0.xyz`
 
 ##version information
 `.version number`

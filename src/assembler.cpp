@@ -185,11 +185,11 @@ int main(int argc, char* argv[])
         if (i >= (int)RegisterSpace::Output)
             name = "o" + std::to_string(i - (int)RegisterSpace::Output);
         else if (i >= (int)RegisterSpace::FloatUniform)
-            name = "f" + std::to_string(i - (int)RegisterSpace::FloatUniform);
+            name = "c" + std::to_string(i - (int)RegisterSpace::FloatUniform);
         else if (i >= (int)RegisterSpace::Temporary)
-            name = "t" + std::to_string(i - (int)RegisterSpace::Temporary);
+            name = "r" + std::to_string(i - (int)RegisterSpace::Temporary);
         else if (i >= (int)RegisterSpace::Input)
-            name = "i" + std::to_string(i - (int)RegisterSpace::Input);
+            name = "v" + std::to_string(i - (int)RegisterSpace::Input);
 
         context.identifiers.add(name, i);
     }
