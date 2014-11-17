@@ -41,6 +41,60 @@
 using namespace boost::spirit;
 namespace phoenix = boost::phoenix;
 
+//#define debug(x)
+
+class Diagnostics
+{
+public:
+//    Diagnostics();
+
+    // Ass a new diagnostic message corresponding to the specified rule tag
+    void Add(const char* tag, const char* diagnostic) {
+        entries[tag] = diagnostic;
+    }
+
+    // Lookup the diagnostic of the specified rule tag and return it (or nullptr if it can't be found)
+    const char* operator [](const char* tag) const {
+        auto it = entries.find(tag);
+        if (it == entries.end())
+            return nullptr;
+        else
+            return it->second;
+    }
+
+private:
+    std::map<std::string, const char*> entries;
+};
+
+struct ErrorHandler
+{
+    template <class, class, class, class, class>
+    struct result { typedef void type; };
+
+    template <class D, class B, class E, class W, class I>
+    void operator ()(const D& diagnostics, B begin, E end, W where, const I& info) const
+    {
+        const utf8_string& tag(info.tag);
+        const char* const what(tag.c_str());
+        const char* diagnostic(diagnostics[what]);
+        std::string scratch;
+        if (!diagnostic) {
+            scratch.reserve(25 + tag.length());
+            scratch = "Expected ";
+            scratch += tag;
+            diagnostic = scratch.c_str();
+        }
+
+        auto newline_iterator = std::find(begin, end, '\n');
+
+        // TODO: Specify a source line number
+        std::cerr << "Parse error: " << diagnostic << std::endl
+                  << std::string(4, ' ') << std::string(begin, newline_iterator) << std::endl
+                  << std::string(4 + std::distance(begin, where), ' ') << '^' << std::string(std::distance(where+1, newline_iterator), ' ') << std::endl;
+    }
+};
+phoenix::function<ErrorHandler> error_handler;
+
 template<typename Iterator>
 struct AssemblySkipper : public qi::grammar<Iterator> {
 
@@ -93,17 +147,33 @@ struct CommonRules {
         known_identifier = qi::lexeme[context.identifiers];
 
         // First number need not have a sign, the others do
-        integer_with_sign = signs > qi::uint_;
-        optionally_signed_int = qi::attr(+1) > qi::uint_;
-        array_indices = qi::lit('[') > (optionally_signed_int | integer_with_sign) > *integer_with_sign > qi::lit(']');
-
-        expression = (-signs) >> known_identifier >> (-array_indices) >> *(qi::lit('.') > swizzle_mask);
+        uint_after_sign = qi::uint_; // TODO: NOT dot (or alphanum) after this to prevent floats..., TODO: overflows?
+        integer_with_sign = signs > uint_after_sign;
+        optionally_signed_int = qi::attr(+1) >> qi::uint_;
+        array_indices = (optionally_signed_int | integer_with_sign) >> *integer_with_sign;
+        expression = (-signs) > known_identifier >> (-(qi::lit('[') > array_indices > qi::lit(']'))) >> *(qi::lit('.') > swizzle_mask);
 
         // Error handling
         expression.name("expression");
         identifier.name("identifier");
         known_identifier.name("known identifier");
         swizzle_mask.name("swizzle mask");
+        uint_after_sign.name("integer after sign");
+        array_indices.name("index expression");
+
+        debug(known_identifier);
+        debug(optionally_signed_int);
+        debug(integer_with_sign);
+        debug(array_indices);
+        debug(expression);
+
+        diagnostics.Add("swizzle mask", "Expected swizzle mask after period");
+        diagnostics.Add("known identifer", "Expected identifier");
+        diagnostics.Add("signed integer", "Expected integer number after sign");
+        diagnostics.Add("index expression", "Expected index expression between '[' and ']'");
+        diagnostics.Add("expression", "Expected expression of a known identifier");
+
+        qi::on_error<qi::fail>(expression, error_handler(phoenix::ref(diagnostics), _1, _2, _3, _4));
     }
 
     // Rule-ified symbols, which can be assigned names
@@ -122,6 +192,14 @@ private:
     qi::rule<Iterator, IntegerWithSign(),         Skipper> integer_with_sign;
     qi::rule<Iterator, IntegerWithSign(),         Skipper> optionally_signed_int;
     qi::rule<Iterator, IndexExpression(),         Skipper> array_indices;
+    qi::rule<Iterator, IndexExpression(),         Skipper> array_indices2;
+
+    // Empty rule
+    qi::rule<Iterator,                            Skipper> opening_bracket;
+    qi::rule<Iterator,                            Skipper> closing_bracket;
+    qi::rule<Iterator, unsigned int(),            Skipper> uint_after_sign;
+
+    Diagnostics diagnostics;
 };
 
 template<typename Iterator>
@@ -192,19 +270,24 @@ struct InstructionParser : qi::grammar<Iterator, StatementInstruction(), Assembl
         instr[4].name("instr[4]");
         start.name("instruction statement");
 
-        debug(instr[0]);
+        diagnostics.Add("1 argument", "one argument");
+        diagnostics.Add("2 arguments", "two arguments");
+        diagnostics.Add("3 arguments", "three arguments");
+        diagnostics.Add("4 arguments", "four arguments");
+
+/*        debug(instr[0]);
         debug(instr[1]);
         debug(instr[2]);
         debug(instr[3]);
         debug(instr[4]);
         debug(start);
-
+*/
         // TODO: Make these error messages more helpful...
         // _1: Iterator first
         // _2: Iterator last
         // _3: Iterator err_pos
         // _4: spirit::info const &what
-		qi::on_error<qi::fail>
+/*		qi::on_error<qi::fail>
 		(
 			start
           , std::cout
@@ -214,7 +297,9 @@ struct InstructionParser : qi::grammar<Iterator, StatementInstruction(), Assembl
                 << phoenix::construct<std::string>(_1, _3) + "___" + phoenix::construct<std::string>(_3+1, _2)
                 << phoenix::val("\"")
                 << std::endl
-		);
+		);*/
+
+//        qi::on_error<qi::fail>(start, error_handler(phoenix::ref(diagnostics), _1, _2, _3, _4));
     }
 
     CommonRules<Iterator> common;
@@ -236,6 +321,8 @@ struct InstructionParser : qi::grammar<Iterator, StatementInstruction(), Assembl
 
     // Utility
     qi::rule<Iterator,                            Skipper> not_comma;
+
+    Diagnostics diagnostics;
 };
 
 template<typename Iterator>
@@ -248,7 +335,7 @@ struct LabelParser : qi::grammar<Iterator, StatementLabel(), AssemblySkipper<Ite
 
         label.name("label");
 
-        debug(label);
+//        debug(label);
     }
 
     CommonRules<Iterator> common;
@@ -290,14 +377,14 @@ struct DeclarationParser : qi::grammar<Iterator, StatementDeclaration(), Assembl
         declaration_alias.name("alias");
         declaration.name("declaration");
 
-        debug(declaration);
+//        debug(declaration);
 
         // TODO: Make these error messages more helpful...
         // _1: Iterator first
         // _2: Iterator last
         // _3: Iterator err_pos
         // _4: spirit::info const &what
-		qi::on_error<qi::fail>
+/*		qi::on_error<qi::fail>
 		(
 			declaration
           , std::cout
@@ -307,7 +394,10 @@ struct DeclarationParser : qi::grammar<Iterator, StatementDeclaration(), Assembl
                 << phoenix::construct<std::string>(_1, _3) + "___" + phoenix::construct<std::string>(_3+1, _2)
                 << phoenix::val("\"")
                 << std::endl
-		);
+		);*/
+
+//        qi::on_error<qi::fail>(declaration, error_handler(phoenix::ref(diagnostics), _1, _2, _3, _4));
+
     }
 
     CommonRules<Iterator> common;
@@ -327,6 +417,7 @@ struct DeclarationParser : qi::grammar<Iterator, StatementDeclaration(), Assembl
     qi::rule<Iterator, DeclarationAlias(),        Skipper> declaration_alias;
 
     qi::rule<Iterator, StatementDeclaration(),    Skipper> declaration;
+    Diagnostics diagnostics;
 };
 
 struct Parser::ParserImpl {
