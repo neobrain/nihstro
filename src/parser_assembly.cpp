@@ -92,7 +92,12 @@ struct CommonRules {
         identifier = qi::lexeme[+(qi::char_("a-zA-Z_")) >> -+qi::char_("0-9")];
         known_identifier = qi::lexeme[context.identifiers];
 
-        expression = (-signs) >> known_identifier >> *(qi::lit('.') > swizzle_mask);
+        // First number need not have a sign, the others do
+        integer_with_sign = signs > qi::uint_;
+        optionally_signed_int = qi::attr(+1) > qi::uint_;
+        array_indices = qi::lit('[') > (optionally_signed_int | integer_with_sign) > *integer_with_sign > qi::lit(']');
+
+        expression = (-signs) >> known_identifier >> (-array_indices) >> *(qi::lit('.') > swizzle_mask);
 
         // Error handling
         expression.name("expression");
@@ -112,6 +117,11 @@ struct CommonRules {
 
     qi::symbols<char, InputSwizzlerMask>          swizzlers;
     qi::rule<Iterator, InputSwizzlerMask(),       Skipper> swizzle_mask;
+
+private:
+    qi::rule<Iterator, IntegerWithSign(),         Skipper> integer_with_sign;
+    qi::rule<Iterator, IntegerWithSign(),         Skipper> optionally_signed_int;
+    qi::rule<Iterator, IndexExpression(),         Skipper> array_indices;
 };
 
 template<typename Iterator>
