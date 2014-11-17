@@ -114,7 +114,48 @@ struct IndexExpression : std::vector</*boost::variant<*/IntegerWithSign/*, Ident
     }*/
 };
 
-using Expression = boost::fusion::vector<boost::optional<Sign>, Identifier, boost::optional<IndexExpression>, std::vector<InputSwizzlerMask>>;
+struct Expression : boost::fusion::vector<boost::optional<Sign>, Identifier, boost::optional<IndexExpression>, std::vector<InputSwizzlerMask>> {
+
+    int GetSign() const {
+        if (!RawSign())
+            return +1;
+        else
+            return *RawSign();
+    }
+
+    const Identifier& GetIdentifier() const {
+        return RawIdentifier();
+    }
+
+    bool HasIndexExpression() const {
+        return RawIndex();
+    }
+
+    const IndexExpression& GetIndexExpression() const {
+        return *RawIndex();
+    }
+
+    const std::vector<InputSwizzlerMask>& GetSwizzleMasks() const {
+        return RawSwizzleMasks();
+    }
+
+private:
+    const boost::optional<Sign>& RawSign() const {
+        return boost::fusion::at_c<0>(*this);
+    }
+
+    const Identifier& RawIdentifier() const {
+        return boost::fusion::at_c<1>(*this);
+    }
+
+    const boost::optional<IndexExpression>& RawIndex() const {
+        return boost::fusion::at_c<2>(*this);
+    }
+
+    const std::vector<InputSwizzlerMask>& RawSwizzleMasks() const {
+        return boost::fusion::at_c<3>(*this);
+    }
+};
 
 using StatementLabel = std::string;
 
