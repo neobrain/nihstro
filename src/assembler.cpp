@@ -231,10 +231,19 @@ int main(int argc, char* argv[])
                     Atomic ret = identifiers[boost::fusion::at_c<1>(expr)];
 
                     auto sign = boost::fusion::at_c<0>(expr);
-                    ret.negate = (sign && sign == -1);
+                    ret.negate = (sign && *sign == -1);
+
+                    if (boost::fusion::at_c<2>(expr)) {
+                        auto array_index_expression = *boost::fusion::at_c<2>(expr);
+                        int index = 0;
+                        for (auto index_with_sign : array_index_expression) {
+                            index += index_with_sign.GetValue();
+                        }
+                        ret.register_index += index;
+                    }
 
                     // Apply swizzle mask(s)
-                    for (const auto& swizzle_mask : boost::fusion::at_c<2>(expr)) {
+                    for (const auto& swizzle_mask : boost::fusion::at_c<3>(expr)) {
                         // TODO: Error out if the swizzle masks can't actually be merged..
 
                         InputSwizzlerMask out;

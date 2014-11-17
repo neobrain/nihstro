@@ -84,7 +84,37 @@ using Identifier = int;
 // A sign, i.e. +1 or -1
 using Sign = int;
 
-using Expression = boost::fusion::vector<boost::optional<Sign>, Identifier, std::vector<InputSwizzlerMask>>;
+struct IntegerWithSign : boost::fusion::vector<int, unsigned int> {
+    int GetValue() const {
+        return boost::fusion::at_c<0>(*this) * boost::fusion::at_c<1>(*this);
+    }
+};
+
+// Raw index + address register index
+struct IndexExpression : std::vector</*boost::variant<*/IntegerWithSign/*, Identifier>*/> {
+//    ArrayIndex() = default;
+    int GetCount() const {
+        return this->size();
+    }
+
+    bool IsRawIndex(int arg) const {
+        return true/*(*this)[arg].which() == 0*/;
+    }
+
+    int GetRawIndex(int arg) const {
+        return /*boost::get<int>(*/(*this)[arg]/*)*/.GetValue();
+    }
+
+/*    bool IsAddressRegisterIndex(int arg) const {
+        return (*this)[arg].which() == 1;
+    }
+
+    Identifier GetAddressRegisterIndex(int arg) const {
+        return boost::get<Identifier>((*this)[arg]);
+    }*/
+};
+
+using Expression = boost::fusion::vector<boost::optional<Sign>, Identifier, boost::optional<IndexExpression>, std::vector<InputSwizzlerMask>>;
 
 using StatementLabel = std::string;
 
