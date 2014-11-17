@@ -114,7 +114,7 @@ struct IndexExpression : std::vector</*boost::variant<*/IntegerWithSign/*, Ident
     }*/
 };
 
-struct Expression : boost::fusion::vector<boost::optional<Sign>, Identifier, boost::optional<IndexExpression>, std::vector<InputSwizzlerMask>> {
+struct Expression : boost::fusion::vector<boost::fusion::vector<boost::optional<Sign>, Identifier>, boost::optional<IndexExpression>, std::vector<InputSwizzlerMask>> {
 
     int GetSign() const {
         if (!RawSign())
@@ -141,19 +141,19 @@ struct Expression : boost::fusion::vector<boost::optional<Sign>, Identifier, boo
 
 private:
     const boost::optional<Sign>& RawSign() const {
-        return boost::fusion::at_c<0>(*this);
+        return boost::fusion::at_c<0>(boost::fusion::at_c<0>(*this));
     }
 
     const Identifier& RawIdentifier() const {
-        return boost::fusion::at_c<1>(*this);
+        return boost::fusion::at_c<1>(boost::fusion::at_c<0>(*this));
     }
 
     const boost::optional<IndexExpression>& RawIndex() const {
-        return boost::fusion::at_c<2>(*this);
+        return boost::fusion::at_c<1>(*this);
     }
 
     const std::vector<InputSwizzlerMask>& RawSwizzleMasks() const {
-        return boost::fusion::at_c<3>(*this);
+        return boost::fusion::at_c<2>(*this);
     }
 };
 
