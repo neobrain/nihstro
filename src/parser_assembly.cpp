@@ -25,6 +25,10 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+
+// Enable this for detailed XML overview of parser results
+// #define BOOST_SPIRIT_DEBUG
+
 #include <boost/spirit/include/qi.hpp>
 
 #include <boost/spirit/include/phoenix_core.hpp>
@@ -41,16 +45,13 @@
 using namespace boost::spirit;
 namespace phoenix = boost::phoenix;
 
-// TODO: Replace with proper definition..
-#define debug(x)
-
 class Diagnostics
 {
 public:
 //    Diagnostics();
 
     // Ass a new diagnostic message corresponding to the specified rule tag
-    void Add(const char* tag, const char* diagnostic) {
+    void Add(const std::string& tag, const char* diagnostic) {
         entries[tag] = diagnostic;
     }
 
@@ -155,24 +156,21 @@ struct CommonRules {
         expression = ((-signs) > known_identifier) >> (-(qi::lit('[') > array_indices > qi::lit(']'))) >> *(qi::lit('.') > swizzle_mask);
 
         // Error handling
-        expression.name("expression");
-        identifier.name("identifier");
-        known_identifier.name("known identifier");
-        swizzle_mask.name("swizzle mask");
-        uint_after_sign.name("integer after sign");
-        array_indices.name("index expression");
+        BOOST_SPIRIT_DEBUG_NODE(identifier);
+        BOOST_SPIRIT_DEBUG_NODE(uint_after_sign);
+        BOOST_SPIRIT_DEBUG_NODE(array_indices);
+        BOOST_SPIRIT_DEBUG_NODE(known_identifier);
+        BOOST_SPIRIT_DEBUG_NODE(optionally_signed_int);
+        BOOST_SPIRIT_DEBUG_NODE(integer_with_sign);
+        BOOST_SPIRIT_DEBUG_NODE(array_indices);
+        BOOST_SPIRIT_DEBUG_NODE(expression);
+        BOOST_SPIRIT_DEBUG_NODE(swizzle_mask);
 
-        debug(known_identifier);
-        debug(optionally_signed_int);
-        debug(integer_with_sign);
-        debug(array_indices);
-        debug(expression);
-
-        diagnostics.Add("swizzle mask", "Expected swizzle mask after period");
-        diagnostics.Add("known identifer", "Expected identifier");
-        diagnostics.Add("signed integer", "Expected integer number after sign");
-        diagnostics.Add("index expression", "Expected index expression between '[' and ']'");
-        diagnostics.Add("expression", "Expected expression of a known identifier");
+        diagnostics.Add(swizzle_mask.name(), "Expected swizzle mask after period");
+        diagnostics.Add(known_identifier.name(), "Unknown identifier");
+        diagnostics.Add(uint_after_sign.name(), "Expected integer number after sign");
+        diagnostics.Add(array_indices.name(), "Expected index expression between '[' and ']'");
+        diagnostics.Add(expression.name(), "Expected expression of a known identifier");
     }
 
     // Rule-ified symbols, which can be assigned names
@@ -206,7 +204,7 @@ struct InstructionParser : qi::grammar<Iterator, StatementInstruction(), Assembl
     using Skipper = AssemblySkipper<Iterator>;
 
     InstructionParser(const ParserContext& context)
-                : InstructionParser::base_type(start),
+                : InstructionParser::base_type(instruction),
                   common(context),
                   identifier(common.identifier),
                   known_identifier(common.known_identifier),
@@ -258,36 +256,29 @@ struct InstructionParser : qi::grammar<Iterator, StatementInstruction(), Assembl
         instr[4] = opcode[4] > expression_chain[4] > not_comma;
 
         // TODO: Expect a newline at the end of things...
-        start %= instr[0] | instr[1] | instr[2] | instr[3] | instr[4];
+        instruction %= instr[0] | instr[1] | instr[2] | instr[3] | instr[4];
 
         // Error handling
-        not_comma.name("not comma");
+        BOOST_SPIRIT_DEBUG_NODE(not_comma);
 
-        expression_chain[1].name("1 argument");
-        expression_chain[2].name("2 arguments");
-        expression_chain[3].name("3 arguments");
-        expression_chain[4].name("4 arguments");
+        BOOST_SPIRIT_DEBUG_NODE(expression_chain[1]);
+        BOOST_SPIRIT_DEBUG_NODE(expression_chain[2]);
+        BOOST_SPIRIT_DEBUG_NODE(expression_chain[3]);
+        BOOST_SPIRIT_DEBUG_NODE(expression_chain[4]);
 
-        instr[0].name("instr[0]");
-        instr[1].name("instr[1]");
-        instr[2].name("instr[2]");
-        instr[3].name("instr[3]");
-        instr[4].name("instr[4]");
-        start.name("instruction statement");
+        BOOST_SPIRIT_DEBUG_NODE(instr[0]);
+        BOOST_SPIRIT_DEBUG_NODE(instr[1]);
+        BOOST_SPIRIT_DEBUG_NODE(instr[2]);
+        BOOST_SPIRIT_DEBUG_NODE(instr[3]);
+        BOOST_SPIRIT_DEBUG_NODE(instr[4]);
+        BOOST_SPIRIT_DEBUG_NODE(instruction);
 
-        diagnostics.Add("1 argument", "one argument");
-        diagnostics.Add("2 arguments", "two arguments");
-        diagnostics.Add("3 arguments", "three arguments");
-        diagnostics.Add("4 arguments", "four arguments");
+        diagnostics.Add(expression_chain[1].name(), "one argument");
+        diagnostics.Add(expression_chain[2].name(), "two arguments");
+        diagnostics.Add(expression_chain[3].name(), "three arguments");
+        diagnostics.Add(expression_chain[4].name(), "four arguments");
 
-        debug(instr[0]);
-        debug(instr[1]);
-        debug(instr[2]);
-        debug(instr[3]);
-        debug(instr[4]);
-        debug(start);
-
-        qi::on_error<qi::fail>(start, error_handler(phoenix::ref(diagnostics), _1, _2, _3, _4));
+        qi::on_error<qi::fail>(instruction, error_handler(phoenix::ref(diagnostics), _1, _2, _3, _4));
     }
 
     CommonRules<Iterator> common;
@@ -305,7 +296,7 @@ struct InstructionParser : qi::grammar<Iterator, StatementInstruction(), Assembl
 
     // Compounds
     qi::rule<Iterator, StatementInstruction(),    Skipper> instr[5];
-    qi::rule<Iterator, StatementInstruction(),    Skipper> start;
+    qi::rule<Iterator, StatementInstruction(),    Skipper> instruction;
 
     // Utility
     qi::rule<Iterator,                            Skipper> not_comma;
@@ -321,9 +312,7 @@ struct LabelParser : qi::grammar<Iterator, StatementLabel(), AssemblySkipper<Ite
 
         label = identifier >> qi::lit(':');
 
-        label.name("label");
-
-//        debug(label);
+        BOOST_SPIRIT_DEBUG_NODE(label);
     }
 
     CommonRules<Iterator> common;
@@ -366,9 +355,8 @@ struct DeclarationParser : qi::grammar<Iterator, StatementDeclaration(), Assembl
         declaration_output.name("output");
         declaration_constant.name("constant");
         declaration_alias.name("alias");
-        declaration.name("declaration");
 
-        debug(declaration);
+        BOOST_SPIRIT_DEBUG_NODE(declaration);
 
         qi::on_error<qi::fail>(declaration, error_handler(phoenix::ref(diagnostics), _1, _2, _3, _4));
     }
