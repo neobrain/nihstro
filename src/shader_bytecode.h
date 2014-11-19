@@ -66,6 +66,7 @@ union Instruction {
         Output,
         Temporary,
         FloatUniform,
+        Address,
         Unknown
     };
 
