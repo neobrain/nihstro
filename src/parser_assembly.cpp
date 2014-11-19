@@ -147,18 +147,20 @@ struct CommonRules {
         // TODO: Something like test5bla should be allowed, too
         identifier = qi::lexeme[+(qi::char_("a-zA-Z_")) >> -+qi::char_("0-9")];
         known_identifier = qi::lexeme[context.identifiers];
+        not_unknown_identifier = !((!known_identifier) >> identifier);
 
         // First number need not have a sign, the others do
         uint_after_sign = qi::uint_; // TODO: NOT dot (or alphanum) after this to prevent floats..., TODO: overflows?
         integer_with_sign = signs > uint_after_sign;
         optionally_signed_int = qi::attr(+1) >> qi::uint_;
         array_indices = (optionally_signed_int | integer_with_sign) >> *integer_with_sign;
-        expression = ((-signs) > known_identifier) >> (-(qi::lit('[') > array_indices > qi::lit(']'))) >> *(qi::lit('.') > swizzle_mask);
+        expression = ((-signs) > not_unknown_identifier > known_identifier) >> (-(qi::lit('[') > array_indices > qi::lit(']'))) >> *(qi::lit('.') > swizzle_mask);
 
         // Error handling
         BOOST_SPIRIT_DEBUG_NODE(identifier);
         BOOST_SPIRIT_DEBUG_NODE(uint_after_sign);
         BOOST_SPIRIT_DEBUG_NODE(array_indices);
+        BOOST_SPIRIT_DEBUG_NODE(not_unknown_identifier);
         BOOST_SPIRIT_DEBUG_NODE(known_identifier);
         BOOST_SPIRIT_DEBUG_NODE(optionally_signed_int);
         BOOST_SPIRIT_DEBUG_NODE(integer_with_sign);
@@ -167,7 +169,8 @@ struct CommonRules {
         BOOST_SPIRIT_DEBUG_NODE(swizzle_mask);
 
         diagnostics.Add(swizzle_mask.name(), "Expected swizzle mask after period");
-        diagnostics.Add(known_identifier.name(), "Unknown identifier");
+        diagnostics.Add(not_unknown_identifier.name(), "Unknown identifier");
+        diagnostics.Add(known_identifier.name(), "Expected identifier");
         diagnostics.Add(uint_after_sign.name(), "Expected integer number after sign");
         diagnostics.Add(array_indices.name(), "Expected index expression between '[' and ']'");
         diagnostics.Add(expression.name(), "Expected expression of a known identifier");
@@ -175,6 +178,7 @@ struct CommonRules {
 
     // Rule-ified symbols, which can be assigned names
     qi::rule<Iterator, Identifier(),              Skipper> known_identifier;
+    qi::rule<Iterator,                            Skipper> not_unknown_identifier;
 
     // Building blocks
     qi::rule<Iterator, std::string(),             Skipper> identifier;
