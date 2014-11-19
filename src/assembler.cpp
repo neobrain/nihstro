@@ -40,18 +40,25 @@ enum class RegisterSpace : int {
     Temporary    = 0x10,
     FloatUniform = 0x20,
     Output       = 0x80,
+    Address      = 0x90,
+    AddressEnd   = 0x92,
+
+    Max          = 0x92,
 };
 
 // Smallest unit an expression evaluates to:
 // Index to register + number of components + swizzle mask + sign
 // Labels are different.
 struct Atomic {
-    int register_index;
+    int register_index; // TODO: Change type to RegisterSpace
     InputSwizzlerMask mask;
     bool negate;
+    int relative_address_source;
 
     const Instruction::RegisterType GetType() const {
-        if (register_index >= (int)RegisterSpace::Output)
+        if (register_index >= (int)RegisterSpace::Address)
+            return Instruction::Address;
+        else if (register_index >= (int)RegisterSpace::Output)
             return Instruction::Output;
         else if (register_index >= (int)RegisterSpace::FloatUniform)
             return Instruction::FloatUniform;
@@ -62,7 +69,9 @@ struct Atomic {
     }
 
     int GetIndex() const {
-        if (register_index >= (int)RegisterSpace::Output)
+        if (register_index >= (int)RegisterSpace::Address)
+            return register_index - (int)RegisterSpace::Address;
+        else if (register_index >= (int)RegisterSpace::Output)
             return register_index - (int)RegisterSpace::Output;
         else if (register_index >= (int)RegisterSpace::FloatUniform)
             return register_index - (int)RegisterSpace::FloatUniform;
@@ -129,12 +138,12 @@ struct SourceSwizzlerMask {
 int main(int argc, char* argv[])
 {
     if (argc < 2) {
-        std::cout << "No output filename given" << std::endl;
+        std::cerr << "No output filename given" << std::endl;
         return 1;
     }
 
     if (argc < 3) {
-        std::cout << "No input filenames given" << std::endl;
+        std::cerr << "No input filenames given" << std::endl;
         return 1;
     }
 
@@ -178,11 +187,15 @@ int main(int argc, char* argv[])
     uint32_t program_write_offset = 0;
 
     ParserContext context;
-    for (int i = 0; i < 0x90; ++i) {
+    for (int i = 0; i <= (int)RegisterSpace::Max; ++i) {
         identifiers.push_back({i, InputSwizzlerMask::FullMask()});
 
         std::string name;
-        if (i >= (int)RegisterSpace::Output)
+        if (i == (int)RegisterSpace::AddressEnd)
+            name = "lcnt";
+        else if (i >= (int)RegisterSpace::Address)
+            name = "a" + std::to_string(i - (int)RegisterSpace::Address);
+        else if (i >= (int)RegisterSpace::Output)
             name = "o" + std::to_string(i - (int)RegisterSpace::Output);
         else if (i >= (int)RegisterSpace::FloatUniform)
             name = "c" + std::to_string(i - (int)RegisterSpace::FloatUniform);
@@ -190,6 +203,8 @@ int main(int argc, char* argv[])
             name = "r" + std::to_string(i - (int)RegisterSpace::Temporary);
         else if (i >= (int)RegisterSpace::Input)
             name = "v" + std::to_string(i - (int)RegisterSpace::Input);
+
+        assert(!name.empty());
 
         context.identifiers.add(name, i);
     }
@@ -231,12 +246,29 @@ int main(int argc, char* argv[])
                     Atomic ret = identifiers[expr.GetIdentifier()];
 
                     ret.negate = expr.GetSign() == -1;
+                    ret.relative_address_source = 0;
 
+                    bool relative_address_set = false;
                     if (expr.HasIndexExpression()) {
-                        auto array_index_expression = expr.GetIndexExpression();
+                        const auto& array_index_expression = expr.GetIndexExpression();
                         int index = 0;
-                        for (auto index_with_sign : array_index_expression) {
-                            index += index_with_sign.GetValue();
+                        for (int i = 0; i < array_index_expression.GetCount(); ++i) {
+                            if (array_index_expression.IsRawIndex(i)) {
+                                index += array_index_expression.GetRawIndex(i);
+                            } else if (array_index_expression.IsAddressRegisterIdentifier(i)) {
+                                if (relative_address_set) {
+                                    throw "May not use more than one register in relative addressing";
+                                }
+
+                                // TODO: Make sure the referenced identifier is not completely bogus
+                                ret.relative_address_source = identifiers[array_index_expression.GetAddressRegisterIdentifier(i)].register_index;
+                                if (ret.relative_address_source < (int)RegisterSpace::Address ||
+                                    ret.relative_address_source > (int)RegisterSpace::AddressEnd) {
+                                    throw "Invalid register " + std::to_string(array_index_expression.GetAddressRegisterIdentifier(i))+ " " + std::to_string(ret.relative_address_source) + " used for relative addressing (only a0, a1 and lcnt are valid indexes)";
+                                }
+                                ret.relative_address_source -= (int)RegisterSpace::Address;
+                                relative_address_set = true;
+                            }
                         }
                         ret.register_index += index;
                     }
@@ -421,7 +453,8 @@ int main(int argc, char* argv[])
 
     // Error out if we didn't parse the full file
     if (begin != input_code.end()) {
-        throw "Invalid token found: " + input_code.substr(begin - input_code.begin());
+        std::cerr << "Aborting due to parse error..." << std::endl; // + input_code.substr(begin - input_code.begin());
+        exit(1);
     }
 
     auto GetSymbolTableEntryByteOffset = [&symbol_table](int index) {
@@ -511,12 +544,12 @@ int main(int argc, char* argv[])
     }
 
     } catch(const std::string& err) {
-        std::cout << "Error: " << err << std::endl;
-        std::cout << "At: " << input_code.substr(preparse_begin - input_code.begin(), begin - preparse_begin) << std::endl;
+        std::cerr << "Error: " << err << std::endl;
+        std::cerr << "At: " << input_code.substr(preparse_begin - input_code.begin(), begin - preparse_begin) << std::endl;
         return 1;
     } catch(const char* err) {
-        std::cout << "Error: " << err << std::endl;
-        std::cout << "At: " << input_code.substr(preparse_begin - input_code.begin(), begin - preparse_begin) << std::endl;
+        std::cerr << "Error: " << err << std::endl;
+        std::cerr << "At: " << input_code.substr(preparse_begin - input_code.begin(), begin - preparse_begin) << std::endl;
         return 1;
     }
 

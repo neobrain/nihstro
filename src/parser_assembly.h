@@ -91,27 +91,27 @@ struct IntegerWithSign : boost::fusion::vector<int, unsigned int> {
 };
 
 // Raw index + address register index
-struct IndexExpression : std::vector</*boost::variant<*/IntegerWithSign/*, Identifier>*/> {
-//    ArrayIndex() = default;
+struct IndexExpression : std::vector<boost::variant<IntegerWithSign, Identifier>> {
+
     int GetCount() const {
         return this->size();
     }
 
     bool IsRawIndex(int arg) const {
-        return true/*(*this)[arg].which() == 0*/;
+        return (*this)[arg].which() == 0;
     }
 
     int GetRawIndex(int arg) const {
-        return /*boost::get<int>(*/(*this)[arg]/*)*/.GetValue();
+        return boost::get<IntegerWithSign>((*this)[arg]).GetValue();
     }
 
-/*    bool IsAddressRegisterIndex(int arg) const {
+    bool IsAddressRegisterIdentifier(int arg) const {
         return (*this)[arg].which() == 1;
     }
 
-    Identifier GetAddressRegisterIndex(int arg) const {
+    Identifier GetAddressRegisterIdentifier(int arg) const {
         return boost::get<Identifier>((*this)[arg]);
-    }*/
+    }
 };
 
 struct Expression : boost::fusion::vector<boost::fusion::vector<boost::optional<Sign>, Identifier>, boost::optional<IndexExpression>, std::vector<InputSwizzlerMask>> {

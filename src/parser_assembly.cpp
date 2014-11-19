@@ -92,7 +92,7 @@ struct ErrorHandler
         // TODO: Specify a source line number
         std::cerr << "Parse error: " << diagnostic << std::endl
                   << std::string(4, ' ') << std::string(begin, newline_iterator) << std::endl
-                  << std::string(4 + std::distance(begin, where), ' ') << '^' << std::string(std::distance(where+1, newline_iterator), ' ') << std::endl;
+                  << std::string(4 + std::distance(begin, where), ' ') << '^' << std::endl;
     }
 };
 phoenix::function<ErrorHandler> error_handler;
@@ -147,38 +147,37 @@ struct CommonRules {
         // TODO: Something like test5bla should be allowed, too
         identifier = qi::lexeme[+(qi::char_("a-zA-Z_")) >> -+qi::char_("0-9")];
         known_identifier = qi::lexeme[context.identifiers];
-        not_unknown_identifier = !((!known_identifier) >> identifier);
+        peek_identifier = &identifier;
 
-        // First number need not have a sign, the others do
         uint_after_sign = qi::uint_; // TODO: NOT dot (or alphanum) after this to prevent floats..., TODO: overflows?
-        integer_with_sign = signs > uint_after_sign;
-        optionally_signed_int = qi::attr(+1) >> qi::uint_;
-        array_indices = (optionally_signed_int | integer_with_sign) >> *integer_with_sign;
-        expression = ((-signs) > not_unknown_identifier > known_identifier) >> (-(qi::lit('[') > array_indices > qi::lit(']'))) >> *(qi::lit('.') > swizzle_mask);
+        auto sign_with_uint = signs > uint_after_sign;
+        index_expression_first_term = (qi::attr(+1) >> qi::uint_) | (peek_identifier > known_identifier);
+        index_expression_following_terms = (qi::lit('+') >> peek_identifier > known_identifier) | sign_with_uint;
+        index_expression = (-index_expression_first_term)           // the first element has an optional sign
+                            >> (*index_expression_following_terms); // following elements have a mandatory sign
+
+        expression = ((-signs) > peek_identifier > known_identifier) >> (-(qi::lit('[') > index_expression > qi::lit(']'))) >> *(qi::lit('.') > swizzle_mask);
 
         // Error handling
         BOOST_SPIRIT_DEBUG_NODE(identifier);
         BOOST_SPIRIT_DEBUG_NODE(uint_after_sign);
-        BOOST_SPIRIT_DEBUG_NODE(array_indices);
-        BOOST_SPIRIT_DEBUG_NODE(not_unknown_identifier);
+        BOOST_SPIRIT_DEBUG_NODE(index_expression);
+        BOOST_SPIRIT_DEBUG_NODE(peek_identifier);
         BOOST_SPIRIT_DEBUG_NODE(known_identifier);
-        BOOST_SPIRIT_DEBUG_NODE(optionally_signed_int);
-        BOOST_SPIRIT_DEBUG_NODE(integer_with_sign);
-        BOOST_SPIRIT_DEBUG_NODE(array_indices);
         BOOST_SPIRIT_DEBUG_NODE(expression);
         BOOST_SPIRIT_DEBUG_NODE(swizzle_mask);
 
         diagnostics.Add(swizzle_mask.name(), "Expected swizzle mask after period");
-        diagnostics.Add(not_unknown_identifier.name(), "Unknown identifier");
-        diagnostics.Add(known_identifier.name(), "Expected identifier");
+        diagnostics.Add(peek_identifier.name(), "Expected identifier");
+        diagnostics.Add(known_identifier.name(), "Unknown identifier");
         diagnostics.Add(uint_after_sign.name(), "Expected integer number after sign");
-        diagnostics.Add(array_indices.name(), "Expected index expression between '[' and ']'");
+        diagnostics.Add(index_expression.name(), "Expected index expression between '[' and ']'");
         diagnostics.Add(expression.name(), "Expected expression of a known identifier");
     }
 
     // Rule-ified symbols, which can be assigned names
     qi::rule<Iterator, Identifier(),              Skipper> known_identifier;
-    qi::rule<Iterator,                            Skipper> not_unknown_identifier;
+    qi::rule<Iterator,                            Skipper> peek_identifier;
 
     // Building blocks
     qi::rule<Iterator, std::string(),             Skipper> identifier;
@@ -192,10 +191,9 @@ struct CommonRules {
     Diagnostics diagnostics;
 
 private:
-    qi::rule<Iterator, IntegerWithSign(),         Skipper> integer_with_sign;
-    qi::rule<Iterator, IntegerWithSign(),         Skipper> optionally_signed_int;
-    qi::rule<Iterator, IndexExpression(),         Skipper> array_indices;
-    qi::rule<Iterator, IndexExpression(),         Skipper> array_indices2;
+    qi::rule<Iterator, IndexExpression(),                             Skipper> index_expression;
+    qi::rule<Iterator, boost::variant<IntegerWithSign, Identifier>(), Skipper> index_expression_first_term;
+    qi::rule<Iterator, boost::variant<IntegerWithSign, Identifier>(), Skipper> index_expression_following_terms;
 
     // Empty rule
     qi::rule<Iterator,                            Skipper> opening_bracket;
