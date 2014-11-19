@@ -49,9 +49,10 @@ union Instruction {
         RCP   = 0x0E,
         RSQ   = 0x0F,
 
+        ARL   = 0x12,   // Address Register Load
         MOV   = 0x13,
 
-        RET   = 0x21,
+        NOP   = 0x21,
         FLUSH = 0x22,
 
         CALL  = 0x24,
@@ -105,9 +106,10 @@ union Instruction {
                 { OpCode::MIN,   { OpCodeType::Arithmetic, 3, "MIN"  } },
                 { OpCode::RCP,   { OpCodeType::Arithmetic, 2, "RCP"  } },
                 { OpCode::RSQ,   { OpCodeType::Arithmetic, 2, "RSQ"  } },
+                { OpCode::ARL,   { OpCodeType::Arithmetic, 1, "ARL"  } },
                 { OpCode::MOV,   { OpCodeType::Arithmetic, 2, "MOV"  } },
-//                { OpCode::RET,   { OpCodeType::Unknown,    ?, "RET"  } },
-//                { OpCode::FLUSH, { OpCodeType::Unknown,    ?, "FLS"  } },
+                { OpCode::NOP,   { OpCodeType::Unknown,    0, "NOP"  } },
+                { OpCode::FLUSH, { OpCodeType::Unknown,    0, "FLS"  } },
                 { OpCode::CALL,  { OpCodeType::Unknown,    1, "CALL" } },
 //                { OpCode::CMP,   { OpCodeType::Unknown,    ?, "CMP"  } },
             };
