@@ -206,8 +206,8 @@ struct InstructionParser : qi::grammar<Iterator, StatementInstruction(), Assembl
     InstructionParser(const ParserContext& context)
                 : InstructionParser::base_type(instruction),
                   common(context),
-                  identifier(common.identifier),
                   known_identifier(common.known_identifier),
+                  identifier(common.identifier),
                   expression(common.expression),
                   diagnostics(common.diagnostics) {
 
@@ -327,8 +327,8 @@ struct DeclarationParser : qi::grammar<Iterator, StatementDeclaration(), Assembl
 
     DeclarationParser(const ParserContext& context)
                 : DeclarationParser::base_type(declaration),
-                  common(context), identifier(common.identifier),
-                  known_identifier(common.known_identifier), diagnostics(common.diagnostics) {
+                  common(context), known_identifier(common.known_identifier),
+                  identifier(common.identifier), diagnostics(common.diagnostics) {
 
         // Setup symbol table
         output_semantics.add("position", OutputRegisterInfo::POSITION);
