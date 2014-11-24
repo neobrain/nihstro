@@ -38,28 +38,37 @@
 
 union Instruction {
     enum class OpCode : uint32_t {
-        ADD   = 0x00,
-        DP3   = 0x01,
-        DP4   = 0x02,
+        ADD     = 0x00,
+        DP3     = 0x01,
+        DP4     = 0x02,
 
-        MUL   = 0x08,
+        MUL     = 0x08,
 
-        MAX   = 0x0C,
-        MIN   = 0x0D,
-        RCP   = 0x0E,
-        RSQ   = 0x0F,
+        MAX     = 0x0C,
+        MIN     = 0x0D,
+        RCP     = 0x0E,
+        RSQ     = 0x0F,
 
-        ARL   = 0x12,   // Address Register Load
-        MOV   = 0x13,
+        ARL     = 0x12,   // Address Register Load
+        MOV     = 0x13,
 
-        NOP   = 0x21,
-        FLUSH = 0x22,
+        NOP     = 0x21,
+        END     = 0x22,
+        BREAKC  = 0x23,
 
-        CALL  = 0x24,
-        CALL2 = 0x25,
-        CALLC = 0x26,
-        IFU   = 0x27,
-        CMP   = 0x2E,
+        CALL    = 0x24,
+        CALLC   = 0x25,
+        CALLU   = 0x26,
+        IFU     = 0x27,
+        IFC     = 0x28,
+        FOR     = 0x29,
+        EMIT    = 0x2A,
+        SETEMIT = 0x2B,
+        JMPC    = 0x2C,
+
+        CMP     = 0x2E, // LSB opcode bit ignored
+
+        MAD     = 0x38, // lower 3 opcode bits ignored
     };
 
     enum RegisterType {
@@ -72,13 +81,49 @@ union Instruction {
     };
 
     enum class OpCodeType {
-        Arithmetic,
+        Trivial,            // 3dbrew format 0
+        Arithmetic,         // 3dbrew format 1
+        ArithmeticInversed, // 3dbrew format 1c
+        Conditional,        // 3dbrew format 2
+        UniformFlowControl, // 3dbrew format 3
+        SetEmit,            // 3dbrew format 4
+        MultiplyAdd,        // 3dbrew format 5
         Unknown
     };
 
     struct OpCodeInfo {
         OpCodeType type;
-        int num_arguments;
+
+        enum : uint32_t {
+            OpDesc = 1,
+            Src1   = 2,
+            Src2   = 4,
+            Idx    = 8,
+            Dest   = 16,
+            OneArgument = OpDesc | Src1 | Idx | Dest,
+            TwoArguments = OneArgument | Src2,
+            AddressRegisterLoad,
+        };
+
+        enum : uint32_t {
+            Dst                 = 1,
+            Num                 = 2,
+            JustDstNum          = Dst | Num,
+            Op                  = 4,
+            NegY                = 8,
+            NegX                = 16,
+            JustCondition       = Op | NegY | NegX,
+            JustConditionAndDst = JustCondition | Dst,
+            Full                = JustConditionAndDst | Num
+        };
+
+        enum : uint32_t {
+            FullAndBool,
+            SimpleAndInt,
+        };
+
+        uint32_t subtype;
+
         std::string name;
     };
 
@@ -98,20 +143,31 @@ union Instruction {
     struct : BitField<0x1a, 0x6, OpCode> {
         OpCodeInfo GetInfo() const {
             std::map<OpCode, OpCodeInfo> map = {
-                { OpCode::ADD,   { OpCodeType::Arithmetic, 3, "ADD"  } },
-                { OpCode::DP3,   { OpCodeType::Arithmetic, 3, "DP3"  } },
-                { OpCode::DP4,   { OpCodeType::Arithmetic, 3, "DP4"  } },
-                { OpCode::MUL,   { OpCodeType::Arithmetic, 3, "MUL"  } },
-                { OpCode::MAX,   { OpCodeType::Arithmetic, 3, "MAX"  } },
-                { OpCode::MIN,   { OpCodeType::Arithmetic, 3, "MIN"  } },
-                { OpCode::RCP,   { OpCodeType::Arithmetic, 2, "RCP"  } },
-                { OpCode::RSQ,   { OpCodeType::Arithmetic, 2, "RSQ"  } },
-                { OpCode::ARL,   { OpCodeType::Arithmetic, 1, "ARL"  } },
-                { OpCode::MOV,   { OpCodeType::Arithmetic, 2, "MOV"  } },
-                { OpCode::NOP,   { OpCodeType::Unknown,    0, "NOP"  } },
-                { OpCode::FLUSH, { OpCodeType::Unknown,    0, "FLS"  } },
-                { OpCode::CALL,  { OpCodeType::Unknown,    1, "CALL" } },
-//                { OpCode::CMP,   { OpCodeType::Unknown,    ?, "CMP"  } },
+
+                { OpCode::ADD,     { OpCodeType::Arithmetic,         OpCodeInfo::TwoArguments,        "add" } },
+                { OpCode::DP3,     { OpCodeType::Arithmetic,         OpCodeInfo::TwoArguments,        "dp3" } },
+                { OpCode::DP4,     { OpCodeType::Arithmetic,         OpCodeInfo::TwoArguments,        "dp4" } },
+                { OpCode::MUL,     { OpCodeType::Arithmetic,         OpCodeInfo::TwoArguments,        "mul" } },
+                { OpCode::MAX,     { OpCodeType::Arithmetic,         OpCodeInfo::TwoArguments,        "max" } },
+                { OpCode::MIN,     { OpCodeType::Arithmetic,         OpCodeInfo::TwoArguments,        "min" } },
+                { OpCode::RCP,     { OpCodeType::Arithmetic,         OpCodeInfo::OneArgument,         "rcp" } },
+                { OpCode::RSQ,     { OpCodeType::Arithmetic,         OpCodeInfo::OneArgument,         "rsq" } },
+                { OpCode::ARL,     { OpCodeType::Arithmetic,         OpCodeInfo::AddressRegisterLoad, "arl" } },
+                { OpCode::MOV,     { OpCodeType::Arithmetic,         OpCodeInfo::OneArgument,         "mov" } },
+                { OpCode::NOP,     { OpCodeType::Trivial,            0,                               "nop" } },
+                { OpCode::END,     { OpCodeType::Trivial,            0,                               "end" } },
+                { OpCode::BREAKC,  { OpCodeType::Conditional,        OpCodeInfo::JustCondition,       "breakc" } },
+                { OpCode::CALL,    { OpCodeType::Conditional,        OpCodeInfo::JustDstNum,          "call" } },
+                { OpCode::CALLC,   { OpCodeType::Conditional,        OpCodeInfo::Full,                "callc" } },
+                { OpCode::CALLU,   { OpCodeType::UniformFlowControl, OpCodeInfo::FullAndBool,         "callu" } },
+                { OpCode::IFU,     { OpCodeType::UniformFlowControl, OpCodeInfo::FullAndBool,         "ifu" } },
+                { OpCode::IFC,     { OpCodeType::Conditional,        OpCodeInfo::Full,                "ifc" } },
+                { OpCode::FOR,     { OpCodeType::UniformFlowControl, OpCodeInfo::SimpleAndInt,        "for" } },
+                { OpCode::EMIT,    { OpCodeType::Trivial,            0,                               "emit" } },
+                { OpCode::SETEMIT, { OpCodeType::SetEmit,            0,                               "setemit" } },
+                { OpCode::JMPC,    { OpCodeType::Conditional,        OpCodeInfo::JustConditionAndDst, "jmpc" } },
+                { OpCode::CMP,     { OpCodeType::ArithmeticInversed, 0,                               "cmp" } }, // TODO: Wrong type
+                { OpCode::MAD,     { OpCodeType::MultiplyAdd,        0,                               "mad" } },
             };
             auto it = map.find(*this);
             if (it == map.end())
