@@ -433,42 +433,6 @@ int main(int argc, char *argv[])
         // TODO: Not sure if name lookup works properly, yet!
 
         switch (instr.opcode) {
-        // common, uses DEST and SRC1:
-        case Instruction::OpCode::RCP:
-        case Instruction::OpCode::RSQ:
-        case Instruction::OpCode::MOV:
-        {
-            std::string src1_relative_address;
-            if (!instr.common.AddressRegisterName().empty())
-                src1_relative_address = "[" + instr.common.AddressRegisterName() + "]";
-
-            std::cout << std::setw(4) << std::right << instr.common.dest.GetName() << "." << swizzle.DestMaskToString() << "  "
-                      << std::setw(8) << std::right << ((swizzle.negate_src1 ? "-" : " ") + instr.common.src1.GetName()) << "." << swizzle.SelectorToString(false) << "   "
-                      << "           " << std::setw(2) << instr.common.operand_desc_id.Value() << " addr:" << instr.common.address_register_index.Value()
-                      << ";      " << parser.LookupDestName(instr.common.dest, swizzle) << " <-  " << (swizzle.negate_src1 ? "-" : " ") + parser.LookupSourceName(instr.common.src1, instr.common.address_register_index) << std::endl;
-            break;
-        }
-
-        // common, uses DEST, SRC1 and SRC2:
-        case Instruction::OpCode::ADD:
-        case Instruction::OpCode::DP3:
-        case Instruction::OpCode::DP4:
-        case Instruction::OpCode::MUL:
-        case Instruction::OpCode::MAX:
-        case Instruction::OpCode::MIN:
-        {
-            std::string src1_relative_address;
-            if (!instr.common.AddressRegisterName().empty())
-                src1_relative_address = "[" + instr.common.AddressRegisterName() + "]";
-
-            std::cout << std::setw(4) << std::right << instr.common.dest.GetName() << "." << swizzle.DestMaskToString() << "  "
-                      << std::setw(8) << std::right << ((swizzle.negate_src1 ? "-" : "") + instr.common.src1.GetName()) + src1_relative_address << "." << swizzle.SelectorToString(false) << "  "
-                      << std::setw(4) << std::right << (swizzle.negate_src2 ? "-" : "") + instr.common.src2.GetName() << "." << swizzle.SelectorToString(true) << "   "
-                      << std::setw(2) << instr.common.operand_desc_id.Value() << " addr:" << instr.common.address_register_index.Value()
-                      << ";      " << parser.LookupDestName(instr.common.dest, swizzle) << " <- " << (swizzle.negate_src1 ? "-" : "") + parser.LookupSourceName(instr.common.src1, instr.common.address_register_index) << ", " << (swizzle.negate_src2 ? "-" : "") + parser.LookupSourceName(instr.common.src2, 0) << std::endl;
-            break;
-        }
-
         case Instruction::OpCode::CALL:
             std::cout << "to 0x" << std::setw(4) << std::right << std::setfill('0') << 4 * instr.flow_control.offset_words << std::setfill(' ') << "  ("
                       << std::setw(4) << std::right << (int)instr.flow_control.num_instructions << " words)    "
@@ -476,7 +440,28 @@ int main(int argc, char *argv[])
             break;
 
         default:
-            std::cout << std::endl;
+            if (instr.opcode.GetInfo().type == Instruction::OpCodeType::Arithmetic) {
+                std::string src1_relative_address;
+                if (!instr.common.AddressRegisterName().empty())
+                    src1_relative_address = "[" + instr.common.AddressRegisterName() + "]";
+
+                std::cout << std::setw(4) << std::right << instr.common.dest.GetName() << "." << swizzle.DestMaskToString() << "  "
+                          << std::setw(8) << std::right << ((swizzle.negate_src1 ? "-" : "") + instr.common.src1.GetName()) + src1_relative_address << "." << swizzle.SelectorToString(false) << "  ";
+
+                if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::Src2)
+                    std::cout << std::setw(4) << std::right << (swizzle.negate_src2 ? "-" : "") + instr.common.src2.GetName() << "." << swizzle.SelectorToString(true) << "   ";
+                else
+                    std::cout << "            ";
+
+                std::cout << std::setw(2) << instr.common.operand_desc_id.Value() << " addr:" << instr.common.address_register_index.Value()
+                          << ";      " << parser.LookupDestName(instr.common.dest, swizzle) << " <- " << (swizzle.negate_src1 ? "-" : "") + parser.LookupSourceName(instr.common.src1, instr.common.address_register_index);
+                if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::Src2)
+                    std::cout << ", " << (swizzle.negate_src2 ? "-" : "") + parser.LookupSourceName(instr.common.src2, 0);
+
+                std::cout << std::endl;
+			} else {
+                std::cout << std::endl;
+            }
             break;
         }
     }
