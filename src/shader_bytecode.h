@@ -52,8 +52,8 @@ union Instruction {
         ARL     = 0x12,   // Address Register Load
         MOV     = 0x13,
 
-        NOP     = 0x21,
-        END     = 0x22,
+        END     = 0x21,
+        NOP     = 0x22,
         BREAKC  = 0x23,
 
         CALL    = 0x24,
