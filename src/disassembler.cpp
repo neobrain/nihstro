@@ -432,37 +432,57 @@ int main(int argc, char *argv[])
 
         // TODO: Not sure if name lookup works properly, yet!
 
-        switch (instr.opcode) {
-        case Instruction::OpCode::CALL:
-            std::cout << "to 0x" << std::setw(4) << std::right << std::setfill('0') << 4 * instr.flow_control.offset_words << std::setfill(' ') << "  ("
-                      << std::setw(4) << std::right << (int)instr.flow_control.num_instructions << " words)    "
-                      << parser.GetLabel(instr.flow_control.offset_words) << std::endl;
-            break;
+        if (instr.opcode.GetInfo().type == Instruction::OpCodeType::Arithmetic) {
+            std::string src1_relative_address;
+            if (!instr.common.AddressRegisterName().empty())
+                src1_relative_address = "[" + instr.common.AddressRegisterName() + "]";
 
-        default:
-            if (instr.opcode.GetInfo().type == Instruction::OpCodeType::Arithmetic) {
-                std::string src1_relative_address;
-                if (!instr.common.AddressRegisterName().empty())
-                    src1_relative_address = "[" + instr.common.AddressRegisterName() + "]";
+            std::cout << std::setw(4) << std::right << instr.common.dest.GetName() << "." << swizzle.DestMaskToString() << "  "
+                      << std::setw(8) << std::right << ((swizzle.negate_src1 ? "-" : "") + instr.common.src1.GetName()) + src1_relative_address << "." << swizzle.SelectorToString(false) << "  ";
 
-                std::cout << std::setw(4) << std::right << instr.common.dest.GetName() << "." << swizzle.DestMaskToString() << "  "
-                          << std::setw(8) << std::right << ((swizzle.negate_src1 ? "-" : "") + instr.common.src1.GetName()) + src1_relative_address << "." << swizzle.SelectorToString(false) << "  ";
+            if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::Src2)
+                std::cout << std::setw(4) << std::right << (swizzle.negate_src2 ? "-" : "") + instr.common.src2.GetName() << "." << swizzle.SelectorToString(true) << "   ";
+            else
+                std::cout << "            ";
 
-                if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::Src2)
-                    std::cout << std::setw(4) << std::right << (swizzle.negate_src2 ? "-" : "") + instr.common.src2.GetName() << "." << swizzle.SelectorToString(true) << "   ";
-                else
-                    std::cout << "            ";
+            std::cout << std::setw(2) << instr.common.operand_desc_id.Value() << " addr:" << instr.common.address_register_index.Value()
+                      << ";      " << parser.LookupDestName(instr.common.dest, swizzle) << " <- " << (swizzle.negate_src1 ? "-" : "") + parser.LookupSourceName(instr.common.src1, instr.common.address_register_index);
+            if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::Src2)
+                std::cout << ", " << (swizzle.negate_src2 ? "-" : "") + parser.LookupSourceName(instr.common.src2, 0);
 
-                std::cout << std::setw(2) << instr.common.operand_desc_id.Value() << " addr:" << instr.common.address_register_index.Value()
-                          << ";      " << parser.LookupDestName(instr.common.dest, swizzle) << " <- " << (swizzle.negate_src1 ? "-" : "") + parser.LookupSourceName(instr.common.src1, instr.common.address_register_index);
-                if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::Src2)
-                    std::cout << ", " << (swizzle.negate_src2 ? "-" : "") + parser.LookupSourceName(instr.common.src2, 0);
+            std::cout << std::endl;
+        } else if (instr.opcode.GetInfo().type == Instruction::OpCodeType::Conditional) {
+            bool has_neg_x = instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::NegX;
+            bool has_neg_y = instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::NegY;
+            const char* ops[] = {
+                " || ", " && ", "", ""
+            };
+            bool show_x = instr.conditional.op != instr.conditional.JustY;
+            bool show_y = instr.conditional.op != instr.conditional.JustX;
+            if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::JustCondition) {
+                if (show_x)
+                    std::cout << ((has_neg_x && instr.conditional.negx) ? "!" : " ") << "cc.x";
+                std::cout << ops[instr.conditional.op];
+                if (show_y)
+                    std::cout << ((has_neg_y && instr.conditional.negy) ? "!" : " ") << "cc.y";
 
-                std::cout << std::endl;
-			} else {
-                std::cout << std::endl;
+                std::cout << "  ";
             }
-            break;
+
+            if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::Dst) {
+                std::cout << "to 0x" << std::setw(4) << std::right << std::setfill('0') << 4 * instr.conditional.dest_offset
+                          << " aka \"" << parser.GetLabel(instr.conditional.dest_offset) << "\"";
+            }
+
+            if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::Num) {
+                // TODO: This is actually "Up till exclusively"
+                std::cout << " to 0x" << std::setw(4) << std::right << std::setfill('0') << 4 * instr.conditional.dest_offset + 4 * instr.conditional.num_instructions + 4
+                          << " aka \"" << parser.GetLabel(instr.conditional.dest_offset + instr.conditional.num_instructions + 1) << "\"";
+            }
+
+            std::cout << std::endl;
+        } else {
+            std::cout << std::endl;
         }
     }
 
