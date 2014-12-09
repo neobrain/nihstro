@@ -125,6 +125,17 @@ union Instruction {
         uint32_t subtype;
 
         std::string name;
+
+        size_t NumArguments() const {
+            if (type == OpCodeType::Arithmetic) {
+                if (subtype & TwoArguments)
+                    return 3;
+                else if (subtype & OneArgument)
+                    return 2;
+            }
+
+            return 0;
+        }
     };
 
     static std::string GetRegisterName(RegisterType type) {

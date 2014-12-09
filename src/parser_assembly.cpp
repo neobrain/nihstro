@@ -216,7 +216,7 @@ struct InstructionParser : qi::grammar<Iterator, StatementInstruction(), Assembl
         // Setup symbol table
         opcodes[0].add
                    ( "nop",   Instruction::OpCode::NOP   )
-                   ( "flush", Instruction::OpCode::FLUSH );
+                   ( "end",   Instruction::OpCode::END );
         opcodes[1].add
                    ( "arl",   Instruction::OpCode::ARL   )
                    ( "call",  Instruction::OpCode::CALL  );

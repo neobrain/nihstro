@@ -293,7 +293,7 @@ int main(int argc, char* argv[])
             switch (shinst.opcode.GetInfo().type) {
                 case Instruction::OpCodeType::Arithmetic:
                 {
-                    const int num_inputs = shinst.opcode.GetInfo().num_arguments - 1;
+                    const int num_inputs = shinst.opcode.GetInfo().NumArguments() - 1;
                     if (num_args != num_inputs + 1)
                         throw "Incorrect number of arguments. Expected " + std::to_string(num_inputs + 1) + ", got " + std::to_string(num_args);
 
