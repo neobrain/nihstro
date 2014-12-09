@@ -34,8 +34,8 @@
 #include <vector>
 #include <map>
 #include <stdint.h>
-#include "bit_field.h"
 
+#include "nihstro/bit_field.h"
 #include "nihstro/shader_binary.h"
 #include "nihstro/shader_bytecode.h"
 
