@@ -36,8 +36,8 @@
 #include <stdint.h>
 #include "bit_field.h"
 
-#include "shader_binary.h"
-#include "shader_bytecode.h"
+#include "nihstro/shader_binary.h"
+#include "nihstro/shader_bytecode.h"
 
 struct float24 {
     static float24 FromFloat32(float val) {

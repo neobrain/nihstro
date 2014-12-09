@@ -6,6 +6,8 @@ find_package(Boost)
 
 add_definitions(-std=c++11)
 
+include_directories(include)
+
 add_executable(nihstro-disassemble src/disassembler.cpp)
 install(TARGETS nihstro-disassemble DESTINATION bin)
 

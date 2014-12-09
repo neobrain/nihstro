@@ -37,10 +37,10 @@
 #include <boost/spirit/include/phoenix_stl.hpp>
 #include <boost/spirit/include/phoenix_object.hpp>
 
-#include "parser_assembly.h"
+#include "nihstro/parser_assembly.h"
 
-#include "shader_binary.h"
-#include "shader_bytecode.h"
+#include "nihstro/shader_binary.h"
+#include "nihstro/shader_bytecode.h"
 
 using namespace boost::spirit;
 namespace phoenix = boost::phoenix;

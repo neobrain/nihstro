@@ -30,10 +30,10 @@
 #include <sstream>
 #include <fstream>
 
-#include "parser_assembly.h"
+#include "nihstro/parser_assembly.h"
 
-#include "shader_binary.h"
-#include "shader_bytecode.h"
+#include "nihstro/shader_binary.h"
+#include "nihstro/shader_bytecode.h"
 
 enum class RegisterSpace : int {
     Input        = 0,
