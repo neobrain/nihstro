@@ -68,6 +68,8 @@ union Instruction {
 
         CMP     = 0x2E, // LSB opcode bit ignored
 
+        // lower 3 opcode bits ignored for these
+        LRP     = 0x30,
         MAD     = 0x38, // lower 3 opcode bits ignored
     };
 
@@ -152,6 +154,18 @@ union Instruction {
     uint32_t hex;
 
     struct : BitField<0x1a, 0x6, OpCode> {
+        OpCode EffectiveOpCode() const {
+            uint32_t op = static_cast<uint32_t>(this->Value());
+            if (static_cast<OpCode>(op & ~0x7) == OpCode::MAD)
+                return OpCode::MAD;
+            else if (static_cast<OpCode>(op & ~0x7) == OpCode::LRP)
+                return OpCode::LRP;
+            else if (static_cast<OpCode>(op & ~0x1) == OpCode::CMP)
+                return OpCode::CMP;
+            else
+                return this->Value();
+        }
+
         OpCodeInfo GetInfo() const {
             std::map<OpCode, OpCodeInfo> map = {
 
@@ -178,9 +192,10 @@ union Instruction {
                 { OpCode::SETEMIT, { OpCodeType::SetEmit,            0,                               "setemit" } },
                 { OpCode::JMPC,    { OpCodeType::Conditional,        OpCodeInfo::JustConditionAndDst, "jmpc" } },
                 { OpCode::CMP,     { OpCodeType::ArithmeticInversed, 0,                               "cmp" } }, // TODO: Wrong type
+                { OpCode::LRP,     { OpCodeType::MultiplyAdd,        0,                               "lrp" } },
                 { OpCode::MAD,     { OpCodeType::MultiplyAdd,        0,                               "mad" } },
             };
-            auto it = map.find(*this);
+            auto it = map.find(EffectiveOpCode());
             if (it == map.end())
                 return { OpCodeType::Unknown, 0, std::string("UNK") + std::to_string(static_cast<int>(this->Value())) };
             else
