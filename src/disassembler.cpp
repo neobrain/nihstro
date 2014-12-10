@@ -74,6 +74,117 @@ private:
     float value;
 };
 
+struct ShaderInfo {
+    std::vector<Instruction> code;
+    std::vector<SwizzleInfo> swizzle_info;
+
+    std::vector<ConstantInfo> constant_table;
+    std::vector<LabelInfo> label_table;
+    std::map<uint32_t, std::string> labels;
+    std::vector<OutputRegisterInfo> output_register_info;
+    std::vector<UniformInfo> uniform_table;
+
+    bool HasLabel(uint32_t offset) const {
+        return labels.find(offset) != labels.end();
+    }
+
+    std::string GetLabel (uint32_t offset) const {
+        auto it = labels.find(offset);
+        if (it != labels.end())
+            return it->second;
+        return "";
+    }
+
+    template<typename T>
+    std::string LookupDestName(const T& dest, const SwizzlePattern& swizzle) const {
+        if (dest < 0x8) {
+            // TODO: This one still needs some prettification in case
+            //       multiple output_infos describing this output register
+            //       are found.
+            std::string ret;
+            for (const auto& output_info : output_register_info) {
+                if (dest != output_info.id)
+                    continue;
+
+                // Only display output register name if the output components it's mapped to are
+                // actually written to.
+                // swizzle.dest_mask and output_info.component_mask use different bit order,
+                // so we can't use AND them bitwise to check this.
+                int matching_mask = 0;
+                for (int i = 0; i < 4; ++i)
+                    matching_mask |= output_info.component_mask & (swizzle.DestComponentEnabled(i) << i);
+
+                if (!matching_mask)
+                    continue;
+
+                // Add a vertical bar so that we have at least *some*
+                // indication that we hit multiple matches.
+                if (!ret.empty())
+                    ret += "|";
+
+                ret += output_info.GetFullName();
+            }
+            if (!ret.empty())
+                return ret;
+        } else if (dest.GetRegisterType() == Instruction::Temporary) {
+            // TODO: Not sure if uniform_info can assign names to temporary registers.
+            //       If that is the case, we should check the table for better names here.
+            std::stringstream stream;
+            stream << "temp_" << std::hex << dest.GetIndex();
+            return stream.str();
+        }
+        return "(?)";
+    }
+
+    template<class T>
+    std::string LookupSourceName(const T& source, unsigned addr_reg_index) const {
+        if (source.GetRegisterType() != Instruction::Temporary) {
+            for (const auto& uniform_info : uniform_table) {
+                // Magic numbers are needed because uniform info registers use the
+                // range 0..0x10 for input registers and 0x10...0x70 for uniform registers,
+                // i.e. there is a "gap" at the temporary registers, for which no
+                // name can be assigned (?).
+                int off = (source.GetRegisterType() == Instruction::Input) ? 0 : 0x10;
+                if (source - off >= uniform_info.basic.reg_start &&
+                    source - off <= uniform_info.basic.reg_end) {
+                    std::string name = uniform_info.name;
+
+                    std::string index;
+                    bool is_array = uniform_info.basic.reg_end != uniform_info.basic.reg_start;
+                    if (is_array) {
+                        index += std::to_string(source - off - uniform_info.basic.reg_start);
+                    }
+                    if (addr_reg_index != 0) {
+                        index += (is_array) ? " + " : "";
+                        index += "a" + std::to_string(addr_reg_index - 1);
+                    }
+
+                    if (!index.empty())
+                        name += "[" + index +  "]";
+
+                    return name;
+                }
+            }
+        }
+
+        // Constants and uniforms really are the same internally
+        for (const auto& constant_info : constant_table) {
+            if (source - 0x20 == constant_info.regid) {
+                return "const_" + std::to_string(constant_info.regid.Value());
+            }
+        }
+
+        // For temporary registers, we at least print "temp_X" if no better name could be found.
+        if (source.GetRegisterType() == Instruction::Temporary) {
+            std::stringstream stream;
+            stream << "temp_" << std::hex << source.GetIndex();
+            return stream.str();
+        }
+
+        return "(?)";
+    }
+};
+
 class ShbinParser {
 public:
     void ReadHeaders(const std::string& filename) {
@@ -124,10 +235,15 @@ public:
             offset += filename.length() + 1;
         }
 
-        // TODO: Proper size restriction?
-        swizzle_info.resize(512);
+        // Read shader binary code
+        shader_info.code.resize(dvlp_header.binary_size_words);
+        file.seekg(dvlp_offset + dvlp_header.binary_offset);
+        file.read((char*)shader_info.code.data(), dvlp_header.binary_size_words * sizeof(Instruction));
+
+	// Read operand descriptor table
+        shader_info.swizzle_info.resize(dvlp_header.swizzle_info_num_entries);
         file.seekg(dvlp_offset + dvlp_header.swizzle_info_offset);
-        file.read((char*)swizzle_info.data(), dvlp_header.swizzle_info_num_entries * sizeof(SwizzleInfo));
+        file.read((char*)shader_info.swizzle_info.data(), dvlp_header.swizzle_info_num_entries * sizeof(SwizzleInfo));
     }
 
     void ReadDVLE(int dvle_index) {
@@ -144,31 +260,31 @@ public:
 
         uint32_t symbol_table_offset = dvle_offset + dvle_header.symbol_table_offset;
 
-        constant_table.resize(dvle_header.constant_table_size);
+        shader_info.constant_table.resize(dvle_header.constant_table_size);
         uint32_t constant_table_offset = dvle_offset + dvle_header.constant_table_offset;
         file.seekg(constant_table_offset);
         for (int i = 0; i < dvle_header.constant_table_size; ++i)
-            file.read((char*)&constant_table[i], sizeof(ConstantInfo));
+            file.read((char*)&shader_info.constant_table[i], sizeof(ConstantInfo));
 
-        label_table.resize(dvle_header.label_table_size);
+        shader_info.label_table.resize(dvle_header.label_table_size);
         uint32_t label_table_offset = dvle_offset + dvle_header.label_table_offset;
         file.seekg(label_table_offset);
         for (int i = 0; i < dvle_header.label_table_size; ++i)
-            file.read((char*)&label_table[i], sizeof(LabelInfo));
-        for (const auto& label_info : label_table)
-            labels.insert({label_info.program_offset, ReadSymbol(symbol_table_offset + label_info.name_offset)});
+            file.read((char*)&shader_info.label_table[i], sizeof(LabelInfo));
+        for (const auto& label_info : shader_info.label_table)
+            shader_info.labels.insert({label_info.program_offset, ReadSymbol(symbol_table_offset + label_info.name_offset)});
 
-        output_register_info.resize(dvle_header.output_register_table_size);
+        shader_info.output_register_info.resize(dvle_header.output_register_table_size);
         file.seekg(dvle_offset + dvle_header.output_register_table_offset);
-        for (auto& info : output_register_info)
+        for (auto& info : shader_info.output_register_info)
             file.read((char*)&info, sizeof(OutputRegisterInfo));
 
-        uniform_table.resize(dvle_header.uniform_table_size);
+        shader_info.uniform_table.resize(dvle_header.uniform_table_size);
         uint32_t uniform_table_offset = dvle_offset + dvle_header.uniform_table_offset;
         file.seekg(uniform_table_offset);
         for (int i = 0; i < dvle_header.uniform_table_size; ++i)
-            file.read((char*)&uniform_table[i].basic, sizeof(uniform_table[i].basic));
-        for (auto& uniform_info : uniform_table)
+            file.read((char*)&shader_info.uniform_table[i].basic, sizeof(shader_info.uniform_table[i].basic));
+        for (auto& uniform_info : shader_info.uniform_table)
             uniform_info.name = ReadSymbol(symbol_table_offset + uniform_info.basic.symbol_offset);
 
         main_offset = dvlp_offset + dvlp_header.binary_offset;
@@ -190,111 +306,11 @@ public:
         return dvle_filenames[dvle_index];
     }
 
-    bool HasLabel(uint32_t offset) {
-        return labels.find(offset) != labels.end();
-    }
-
-    std::string GetLabel (uint32_t offset) {
-        auto it = labels.find(offset);
-        if (it != labels.end())
-            return it->second;
-        return "";
-    }
-
     Instruction ReadShaderInstruction(int word_index) {
         Instruction instr;
         file.seekg(main_offset + 4 * word_index);
         file.read((char*)&instr, sizeof(instr));
         return instr;
-    }
-
-    template<typename T>
-    std::string LookupDestName(const T& dest, const SwizzlePattern& swizzle) {
-        if (dest < 0x8) {
-            // TODO: This one still needs some prettification in case
-            //       multiple output_infos describing this output register
-            //       are found.
-            std::string ret;
-            for (const auto& output_info : output_register_info) {
-                if (dest != output_info.id)
-                    continue;
-
-                // Only display output register name if the output components it's mapped to are
-                // actually written to.
-                // swizzle.dest_mask and output_info.component_mask use different bit order,
-                // so we can't use AND them bitwise to check this.
-                int matching_mask = 0;
-                for (int i = 0; i < 4; ++i)
-                    matching_mask |= output_info.component_mask & (swizzle.DestComponentEnabled(i) << i);
-
-                if (!matching_mask)
-                    continue;
-
-                // Add a vertical bar so that we have at least *some*
-                // indication that we hit multiple matches.
-                if (!ret.empty())
-                    ret += "|";
-
-                ret += output_info.GetFullName();
-            }
-            if (!ret.empty())
-                return ret;
-        } else if (dest.GetRegisterType() == Instruction::Temporary) {
-            // TODO: Not sure if uniform_info can assign names to temporary registers.
-            //       If that is the case, we should check the table for better names here.
-            std::stringstream stream;
-            stream << "temp_" << std::hex << dest.GetIndex();
-            return stream.str();
-        }
-        return "(?)";
-    }
-
-    template<class T>
-    std::string LookupSourceName(const T& source, unsigned addr_reg_index) {
-        if (source.GetRegisterType() != Instruction::Temporary) {
-            for (const auto& uniform_info : uniform_table) {
-                // Magic numbers are needed because uniform info registers use the
-                // range 0..0x10 for input registers and 0x10...0x70 for uniform registers,
-                // i.e. there is a "gap" at the temporary registers, for which no
-                // name can be assigned (?).
-                int off = (source.GetRegisterType() == Instruction::Input) ? 0 : 0x10;
-                if (source - off >= uniform_info.basic.reg_start &&
-                    source - off <= uniform_info.basic.reg_end) {
-                    std::string name = uniform_info.name;
-
-                    std::string index;
-                    bool is_array = uniform_info.basic.reg_end != uniform_info.basic.reg_start;
-                    if (is_array) {
-                        index += std::to_string(source - off - uniform_info.basic.reg_start);
-                    }
-                    if (addr_reg_index != 0) {
-                        index += (is_array) ? " + " : "";
-                        index += "a" + std::to_string(addr_reg_index - 1);
-                    }
-
-                    if (!index.empty())
-                        name += "[" + index +  "]";
-
-                    return name;
-                }
-            }
-        }
-
-        // Constants and uniforms really are the same internally
-        for (const auto& constant_info : constant_table) {
-            if (source - 0x20 == constant_info.regid) {
-                return "const_" + std::to_string(constant_info.regid.Value());
-            }
-        }
-
-        // For temporary registers, we at least print "temp_X" if no better name could be found.
-        if (source.GetRegisterType() == Instruction::Temporary) {
-            std::stringstream stream;
-            stream << "temp_" << std::hex << source.GetIndex();
-            return stream.str();
-        }
-
-        return "(?)";
     }
 
 private:
@@ -315,19 +331,12 @@ private:
 
     uint32_t dvlp_offset;
 
-    // TODO: Put this into a struct!
 public:
-    std::vector<SwizzleInfo> swizzle_info;
-
     std::vector<uint32_t>    dvle_offsets;
     std::vector<DVLEHeader>  dvle_headers;
     std::vector<std::string> dvle_filenames;
 
-    std::vector<ConstantInfo> constant_table;
-    std::vector<LabelInfo> label_table;
-    std::map<uint32_t, std::string> labels;
-    std::vector<OutputRegisterInfo> output_register_info;
-    std::vector<UniformInfo> uniform_table;
+    ShaderInfo shader_info;
 
     uint32_t main_offset;
 };
@@ -365,8 +374,8 @@ int main(int argc, char *argv[])
         parser.ReadDVLE(dvle_index);
 
         auto& dvle_header = parser.dvle_headers[dvle_index];
-        for (int i = 0; i < parser.constant_table.size(); ++i) {
-            auto& info = parser.constant_table[i];
+        for (int i = 0; i < parser.shader_info.constant_table.size(); ++i) {
+            auto& info = parser.shader_info.constant_table[i];
             if (info.is_float32) {
                 std::cout << "Constant register info:  const" << info.regid.Value()
                           << " = (" << *(float*)&info.x << ", " << *(float*)&info.y
@@ -386,17 +395,17 @@ int main(int argc, char *argv[])
             }
         }
 
-        for (int i = 0; i < parser.label_table.size(); ++i) {
-            const auto& label_info = parser.label_table[i];
-            std::cout << "Found label \"" << parser.labels[label_info.program_offset]
+        for (int i = 0; i < parser.shader_info.label_table.size(); ++i) {
+            const auto& label_info = parser.shader_info.label_table[i];
+            std::cout << "Found label \"" << parser.shader_info.labels[label_info.program_offset]
                       << "\" at program offset 0x" << std::hex << 4 * label_info.program_offset
                       << std::endl;
         }
 
-        for (auto& info : parser.output_register_info)
+        for (auto& info : parser.shader_info.output_register_info)
             std::cout << "Output register info:  o" << info.id.Value() << " = " << std::setw(13) << info.GetFullName() << " (" << std::hex << std::setw(16) << std::setfill('0') << (uint64_t)info.hex << std::setfill(' ') << ")" << std::endl;
 
-        for (auto& uniform_info : parser.uniform_table)
+        for (auto& uniform_info : parser.shader_info.uniform_table)
 //            std::cout << "Found uniform symbol \"" << std::setw(20) << uniform_info.name << "\" for registers 0x" << std::setfill('0') << std::setw(2) << uniform_info.basic.reg_start << "-0x" << std::setw(2) << uniform_info.basic.reg_end << " at offset 0x" << std::hex << symbol_table_offset + uniform_info.basic.symbol_offset << std::setfill(' ') << std::endl;
             std::cout << "Found uniform symbol \"" << std::setw(20) << uniform_info.name << "\" for registers 0x" << std::setfill('0') << std::setw(2) << uniform_info.basic.reg_start << "-0x" << std::setw(2) << uniform_info.basic.reg_end << std::setfill(' ') << std::endl;
 
@@ -415,20 +424,21 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    for (uint32_t word = 0; word < parser.GetDVLPHeader().binary_size_words; ++word) {
+    const ShaderInfo& shader_info = parser.shader_info;
+    for (uint32_t word = 0; word < shader_info.code.size(); ++word) {
         std::cout.flags(std::ios::left | std::ios::hex);
-        if (parser.HasLabel(word)) {
+        if (shader_info.HasLabel(word)) {
             std::cout << std::setw(8) << std::right << std::setfill('0') << 4*word
-                      << " [--------] " << parser.GetLabel(word) << ":" << std::endl;
+                      << " [--------] " << shader_info.GetLabel(word) << ":" << std::endl;
         }
 
-        Instruction instr = parser.ReadShaderInstruction(word);
+        Instruction instr = shader_info.code[word];
 
         std::cout << std::setw(8) << std::right << std::setfill('0') << 4*word << " "
                   << "[" << std::setw(8) << std::right << std::setfill('0') << instr.hex << "]     "
                   << std::setw(7) << std::left << std::setfill(' ') << instr.opcode.GetInfo().name;
 
-        const SwizzlePattern& swizzle = parser.swizzle_info[instr.common.operand_desc_id].pattern;
+        const SwizzlePattern& swizzle = shader_info.swizzle_info[instr.common.operand_desc_id].pattern;
 
         // TODO: Not sure if name lookup works properly, yet!
 
@@ -446,9 +456,9 @@ int main(int argc, char *argv[])
                 std::cout << "            ";
 
             std::cout << std::setw(2) << instr.common.operand_desc_id.Value() << " addr:" << instr.common.address_register_index.Value()
-                      << ";      " << parser.LookupDestName(instr.common.dest, swizzle) << " <- " << (swizzle.negate_src1 ? "-" : "") + parser.LookupSourceName(instr.common.src1, instr.common.address_register_index);
+                      << ";      " << shader_info.LookupDestName(instr.common.dest, swizzle) << " <- " << (swizzle.negate_src1 ? "-" : "") + shader_info.LookupSourceName(instr.common.src1, instr.common.address_register_index);
             if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::Src2)
-                std::cout << ", " << (swizzle.negate_src2 ? "-" : "") + parser.LookupSourceName(instr.common.src2, 0);
+                std::cout << ", " << (swizzle.negate_src2 ? "-" : "") + shader_info.LookupSourceName(instr.common.src2, 0);
 
             std::cout << std::endl;
         } else if (instr.opcode.GetInfo().type == Instruction::OpCodeType::Conditional) {
@@ -471,13 +481,13 @@ int main(int argc, char *argv[])
 
             if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::Dst) {
                 std::cout << "to 0x" << std::setw(4) << std::right << std::setfill('0') << 4 * instr.conditional.dest_offset
-                          << " aka \"" << parser.GetLabel(instr.conditional.dest_offset) << "\"";
+                          << " aka \"" << shader_info.GetLabel(instr.conditional.dest_offset) << "\"";
             }
 
             if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::Num) {
                 // TODO: This is actually "Up till exclusively"
                 std::cout << " to 0x" << std::setw(4) << std::right << std::setfill('0') << 4 * instr.conditional.dest_offset + 4 * instr.conditional.num_instructions + 4
-                          << " aka \"" << parser.GetLabel(instr.conditional.dest_offset + instr.conditional.num_instructions + 1) << "\"";
+                          << " aka \"" << shader_info.GetLabel(instr.conditional.dest_offset + instr.conditional.num_instructions + 1) << "\"";
             }
 
             std::cout << std::endl;
@@ -488,8 +498,8 @@ int main(int argc, char *argv[])
 
     std::cout << std::endl << "Swizzle patterns:" << std::endl;
 
-    for (int i = 0; i < parser.GetDVLPHeader().swizzle_info_num_entries; ++i) {
-        const auto& info = parser.swizzle_info[i];
+    for (int i = 0; i < shader_info.swizzle_info.size(); ++i) {
+        const auto& info = shader_info.swizzle_info[i];
         const auto& pattern = info.pattern;
         std::cout << "(" << std::setw(3) << std::right << std::hex << i << ") " << std::setw(8) << std::setfill('0') << pattern.hex << ": " << pattern.dest_mask.Value() << "   " <<
                      " " << (int)pattern.negate_src1 << "  " <<
