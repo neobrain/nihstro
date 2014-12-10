@@ -176,22 +176,41 @@ int main(int argc, char *argv[])
         // TODO: Not sure if name lookup works properly, yet!
 
         if (instr.opcode.GetInfo().type == Instruction::OpCodeType::Arithmetic) {
+            bool src_reversed = (instr.opcode.GetInfo().subtype == static_cast<uint32_t>(Instruction::OpCodeType::ArithmeticInversed));
+            auto src1 = instr.common.GetSrc1(src_reversed);
+            auto src2 = instr.common.GetSrc2(src_reversed);
+
             std::string src1_relative_address;
             if (!instr.common.AddressRegisterName().empty())
                 src1_relative_address = "[" + instr.common.AddressRegisterName() + "]";
 
-            std::cout << std::setw(4) << std::right << instr.common.dest.GetName() << "." << swizzle.DestMaskToString() << "  "
-                      << std::setw(8) << std::right << ((swizzle.negate_src1 ? "-" : "") + instr.common.src1.GetName()) + src1_relative_address << "." << swizzle.SelectorToString(false) << "  ";
+            if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::Dest) {
+                std::cout << std::setw(4) << std::right << instr.common.dest.GetName() << "." << swizzle.DestMaskToString() << "  ";
+            } else {
+                std::cout << "    ";
+            }
 
-            if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::Src2)
-                std::cout << std::setw(4) << std::right << (swizzle.negate_src2 ? "-" : "") + instr.common.src2.GetName() << "." << swizzle.SelectorToString(true) << "   ";
-            else
+            if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::Src1) {
+                std::cout << std::setw(8) << std::right << ((swizzle.negate_src1 ? "-" : "") + src1.GetName()) + src1_relative_address << "." << swizzle.SelectorToString(false) << "  ";
+            } else {
+                std::cout << "           ";
+            }
+
+            if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::CompareOps) {
+                std::cout << instr.common.compare_op.ToString(instr.common.compare_op.x) << " " << instr.common.compare_op.ToString(instr.common.compare_op.y) << " ";
+            } else {
+            }
+
+            if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::Src2) {
+                std::cout << std::setw(4) << std::right << (swizzle.negate_src2 ? "-" : "") + src2.GetName() << "." << swizzle.SelectorToString(true) << "   ";
+            } else {
                 std::cout << "            ";
+            }
 
             std::cout << std::setw(2) << instr.common.operand_desc_id.Value() << " addr:" << instr.common.address_register_index.Value()
-                      << ";      " << shader_info.LookupDestName(instr.common.dest, swizzle) << " <- " << (swizzle.negate_src1 ? "-" : "") + shader_info.LookupSourceName(instr.common.src1, instr.common.address_register_index);
+                      << ";      " << shader_info.LookupDestName(instr.common.dest, swizzle) << " <- " << (swizzle.negate_src1 ? "-" : "") + shader_info.LookupSourceName(src1, instr.common.address_register_index);
             if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::Src2)
-                std::cout << ", " << (swizzle.negate_src2 ? "-" : "") + shader_info.LookupSourceName(instr.common.src2, 0);
+                std::cout << ", " << (swizzle.negate_src2 ? "-" : "") + shader_info.LookupSourceName(src2, 0);
 
             std::cout << std::endl;
         } else if (instr.opcode.GetInfo().type == Instruction::OpCodeType::Conditional) {
