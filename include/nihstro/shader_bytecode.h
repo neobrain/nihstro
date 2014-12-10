@@ -36,6 +36,98 @@
 
 #pragma pack(1)
 
+enum class RegisterType {
+    Input,
+    Output,
+    Temporary,
+    FloatUniform,
+    Address,
+    Unknown
+};
+
+static std::string GetRegisterName(RegisterType type) {
+    std::map<RegisterType, std::string> map = {
+        { RegisterType::Input, "v" },
+        { RegisterType::Output, "o" },
+        { RegisterType::Temporary, "r" },
+        { RegisterType::FloatUniform, "c" },
+        { RegisterType::Unknown, "u" },
+    };
+    return map[type];
+}
+
+struct SourceRegister {
+    SourceRegister() = default;
+
+    SourceRegister(uint32_t value) {
+        this->value = value;
+    }
+
+    RegisterType GetRegisterType() const {
+        if (value < 0x10)
+            return RegisterType::Input;
+        else if (value < 0x20)
+            return RegisterType::Temporary;
+        else
+            return RegisterType::FloatUniform;
+    }
+
+    int GetIndex() const {
+        if (GetRegisterType() == RegisterType::Input)
+            return value;
+        else if (GetRegisterType() == RegisterType::Temporary)
+            return value - 0x10;
+        else if (GetRegisterType() == RegisterType::FloatUniform)
+            return value - 0x20;
+    }
+
+    void InitializeFromTypeAndIndex(RegisterType type, int index) {
+        if (type == RegisterType::Input)
+            value = index;
+        else if (type == RegisterType::Temporary)
+            value = index + 0x10;
+        else if (type == RegisterType::FloatUniform)
+            value = index + 0x20;
+        else {
+            // TODO: Should throw an exception or something.
+        }
+    }
+
+    std::string GetName() const {
+        return GetRegisterName(GetRegisterType()) + std::to_string(GetIndex());
+    }
+
+    template<typename T>
+    decltype(uint32_t{} - T{}) operator -(const T& oth) const {
+        return value - oth;
+    }
+
+    template<typename T>
+    decltype(uint32_t{} & T{}) operator &(const T& oth) const {
+        return value & oth;
+    }
+
+    uint32_t operator &(const SourceRegister& oth) const {
+        return value & oth.value;
+    }
+
+    uint32_t operator ~() const {
+        return ~value;
+    }
+
+private:
+    uint32_t value;
+};
+
+namespace std {
+
+template<>
+struct make_unsigned<SourceRegister> {
+    using type = SourceRegister;
+};
+
+}
+
 union Instruction {
     enum class OpCode : uint32_t {
         ADD     = 0x00,
@@ -73,15 +165,6 @@ union Instruction {
         MAD     = 0x38, // lower 3 opcode bits ignored
     };
 
-    enum RegisterType {
-        Input,
-        Output,
-        Temporary,
-        FloatUniform,
-        Address,
-        Unknown
-    };
-
     enum class OpCodeType {
         Trivial,            // 3dbrew format 0
         Arithmetic,         // 3dbrew format 1
@@ -96,17 +179,22 @@ union Instruction {
     struct OpCodeInfo {
         OpCodeType type;
 
+        // Arithmetic
         enum : uint32_t {
-            OpDesc = 1,
-            Src1   = 2,
-            Src2   = 4,
-            Idx    = 8,
-            Dest   = 16,
+            OpDesc      = 1,
+            Src1        = 2,
+            Src2        = 4,
+            Idx         = 8,
+            Dest        = 16,
+            SrcInversed = 32,
+            CompareOps  = 64,
             OneArgument = OpDesc | Src1 | Idx | Dest,
             TwoArguments = OneArgument | Src2,
+            Compare = OpDesc | Idx | Src1 | Src2 | CompareOps,
             AddressRegisterLoad,
         };
 
+        // Flow Control
         enum : uint32_t {
             Dst                 = 1,
             Num                 = 2,
@@ -139,17 +227,6 @@ union Instruction {
             return 0;
         }
     };
-
-    static std::string GetRegisterName(RegisterType type) {
-        std::map<RegisterType, std::string> map = {
-            { Input, "v" },
-            { Output, "o" },
-            { Temporary, "r" },
-            { FloatUniform, "c" },
-            { Unknown, "u" },
-        };
-        return map[type];
-    }
 
     uint32_t hex;
 
@@ -191,7 +268,7 @@ union Instruction {
                 { OpCode::EMIT,    { OpCodeType::Trivial,            0,                               "emit" } },
                 { OpCode::SETEMIT, { OpCodeType::SetEmit,            0,                               "setemit" } },
                 { OpCode::JMPC,    { OpCodeType::Conditional,        OpCodeInfo::JustConditionAndDst, "jmpc" } },
-                { OpCode::CMP,     { OpCodeType::ArithmeticInversed, 0,                               "cmp" } }, // TODO: Wrong type
+                { OpCode::CMP,     { OpCodeType::Arithmetic,         OpCodeInfo::Compare,             "cmp" } },
                 { OpCode::LRP,     { OpCodeType::MultiplyAdd,        0,                               "lrp" } },
                 { OpCode::MAD,     { OpCodeType::MultiplyAdd,        0,                               "mad" } },
             };
@@ -202,6 +279,7 @@ union Instruction {
                 return it->second;
         }
     } opcode;
+
 
     // General notes:
     //
@@ -214,49 +292,60 @@ union Instruction {
     union {
         BitField<0x00, 0x7, uint32_t> operand_desc_id;
 
-        template<class BitFieldType>
-        struct SourceRegister : BitFieldType {
-
-            RegisterType GetRegisterType() const {
-                if (this->Value() < 0x10)
-                    return Input;
-                else if (this->Value() < 0x20)
-                    return Temporary;
-                else
-                    return FloatUniform;
+        const SourceRegister GetSrc1(bool is_inverted) const {
+            if (is_inverted) {
+                return src1;
+            } else {
+                return src1i;
             }
+        }
 
-            int GetIndex() const {
-                if (GetRegisterType() == Input)
-                    return this->Value();
-                else if (GetRegisterType() == Temporary)
-                    return this->Value() - 0x10;
-                else if (GetRegisterType() == FloatUniform)
-                    return this->Value() - 0x20;
+        const SourceRegister GetSrc2(bool is_inverted) const {
+            if (is_inverted) {
+                return src2;
+            } else {
+                return src2i;
             }
+        }
 
-            void InitializeFromTypeAndIndex(RegisterType type, int index) {
-                if (type == Input)
-                    this->Assign(index);
-                else if (type == Temporary)
-                    this->Assign(index + 0x10);
-                else if (type == FloatUniform)
-                    this->Assign(index + 0x20);
-                else {
-                    // TODO: Should throw an exception or something.
-                }
-            }
+        BitField<0x07, 0x5, SourceRegister> src2;
+        BitField<0x0c, 0x7, SourceRegister> src1;
 
-            std::string GetName() const {
-                return GetRegisterName(GetRegisterType()) + std::to_string(GetIndex());
-            }
-        };
-
-        SourceRegister<BitField<0x07, 0x5, uint32_t>> src2;
-        SourceRegister<BitField<0x0c, 0x7, uint32_t>> src1;
+        BitField<0x07, 0x7, SourceRegister> src1i;
+        BitField<0x0e, 0x5, SourceRegister> src2i;
 
         // Address register value is used for relative addressing of src1
         BitField<0x13, 0x2, uint32_t> address_register_index;
+
+        union {
+            enum Op : uint32_t {
+                Equal        = 0,
+                NotEqual     = 1,
+                LessThan     = 2,
+                LessEqual    = 3,
+                GreaterThan  = 4,
+                GreaterEqual = 5,
+                Unk6         = 6,
+                Unk7         = 7
+            };
+
+            BitField<0x15, 0x3, Op> y;
+            BitField<0x18, 0x3, Op> x;
+
+            const std::string ToString(Op op) const {
+                std::map<Op, std::string> map = {
+                    { Equal, "==" },
+                    { NotEqual, "!=" },
+                    { LessThan, "<" },
+                    { LessEqual, "<=" },
+                    { GreaterThan, ">" },
+                    { GreaterEqual, ">=" },
+                    { Unk6, "UNK6" },
+                    { Unk7, "UNK7" }
+                };
+                return map[op];
+            }
+        } compare_op;
 
         std::string AddressRegisterName() const {
             if (address_register_index == 0) return "";
@@ -269,28 +358,28 @@ union Instruction {
         {
             RegisterType GetRegisterType() const {
                 if (Value() < 0x8)
-                    return Output;
+                    return RegisterType::Output;
                 else if (Value() < 0x10)
-                    return Unknown;
+                    return RegisterType::Unknown;
                 else
-                    return Temporary;
+                    return RegisterType::Temporary;
             }
 
             int GetIndex() const {
-                if (GetRegisterType() == Output)
+                if (GetRegisterType() == RegisterType::Output)
                     return this->Value();
-                else if (GetRegisterType() == Temporary)
+                else if (GetRegisterType() == RegisterType::Temporary)
                     return this->Value() - 0x10;
-                else // if (GetRegisterType() == FloatUniform)
+                else // if (GetRegisterType() == RegisterType::FloatUniform)
                     return this->Value() - 0x20;
             }
 
             void InitializeFromTypeAndIndex(RegisterType type, int index) {
-                if (type == Output)
+                if (type == RegisterType::Output)
                     this->Assign(index);
-                else if (type == Temporary)
+                else if (type == RegisterType::Temporary)
                     this->Assign(index + 0x10);
-                else if (type == FloatUniform)
+                else if (type == RegisterType::FloatUniform)
                     this->Assign(index + 0x20);
                 else {
                     // TODO: Should throw an exception or something.

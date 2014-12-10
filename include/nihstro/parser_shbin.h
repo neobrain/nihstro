@@ -95,7 +95,7 @@ struct ShaderInfo {
             }
             if (!ret.empty())
                 return ret;
-        } else if (dest.GetRegisterType() == Instruction::Temporary) {
+        } else if (dest.GetRegisterType() == RegisterType::Temporary) {
             // TODO: Not sure if uniform_info can assign names to temporary registers.
             //       If that is the case, we should check the table for better names here.
             std::stringstream stream;
@@ -107,13 +107,13 @@ struct ShaderInfo {
 
     template<class T>
     std::string LookupSourceName(const T& source, unsigned addr_reg_index) const {
-        if (source.GetRegisterType() != Instruction::Temporary) {
+        if (source.GetRegisterType() != RegisterType::Temporary) {
             for (const auto& uniform_info : uniform_table) {
                 // Magic numbers are needed because uniform info registers use the
                 // range 0..0x10 for input registers and 0x10...0x70 for uniform registers,
                 // i.e. there is a "gap" at the temporary registers, for which no
                 // name can be assigned (?).
-                int off = (source.GetRegisterType() == Instruction::Input) ? 0 : 0x10;
+                int off = (source.GetRegisterType() == RegisterType::Input) ? 0 : 0x10;
                 if (source - off >= uniform_info.basic.reg_start &&
                     source - off <= uniform_info.basic.reg_end) {
                     std::string name = uniform_info.name;
@@ -144,7 +144,7 @@ struct ShaderInfo {
         }
 
         // For temporary registers, we at least print "temp_X" if no better name could be found.
-        if (source.GetRegisterType() == Instruction::Temporary) {
+        if (source.GetRegisterType() == RegisterType::Temporary) {
             std::stringstream stream;
             stream << "temp_" << std::hex << source.GetIndex();
             return stream.str();
