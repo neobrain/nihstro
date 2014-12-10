@@ -43,6 +43,16 @@ struct ShaderInfo {
     std::vector<OutputRegisterInfo> output_register_info;
     std::vector<UniformInfo> uniform_table;
 
+    void Clear() {
+        code.clear();
+        swizzle_info.clear();
+        constant_table.clear();
+        label_table.clear();
+        labels.clear();
+        output_register_info.clear();
+        uniform_table.clear();
+    }
+
     bool HasLabel(uint32_t offset) const {
         return labels.find(offset) != labels.end();
     }
