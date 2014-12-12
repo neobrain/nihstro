@@ -218,7 +218,7 @@ struct InstructionParser : qi::grammar<Iterator, StatementInstruction(), Assembl
                    ( "nop",   Instruction::OpCode::NOP   )
                    ( "end",   Instruction::OpCode::END );
         opcodes[1].add
-                   ( "arl",   Instruction::OpCode::ARL   )
+                   ( "mova",  Instruction::OpCode::MOVA  )
                    ( "call",  Instruction::OpCode::CALL  );
 
         opcodes[2].add
