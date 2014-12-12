@@ -97,6 +97,10 @@ struct SourceRegister {
         return GetRegisterName(GetRegisterType()) + std::to_string(GetIndex());
     }
 
+    operator uint32_t() const {
+        return value;
+    }
+
     template<typename T>
     decltype(uint32_t{} - T{}) operator -(const T& oth) const {
         return value - oth;
@@ -168,7 +172,6 @@ union Instruction {
     enum class OpCodeType {
         Trivial,            // 3dbrew format 0
         Arithmetic,         // 3dbrew format 1
-        ArithmeticInversed, // 3dbrew format 1c
         Conditional,        // 3dbrew format 2
         UniformFlowControl, // 3dbrew format 3
         SetEmit,            // 3dbrew format 4
@@ -293,7 +296,7 @@ union Instruction {
         BitField<0x00, 0x7, uint32_t> operand_desc_id;
 
         const SourceRegister GetSrc1(bool is_inverted) const {
-            if (is_inverted) {
+            if (!is_inverted) {
                 return src1;
             } else {
                 return src1i;
@@ -301,7 +304,7 @@ union Instruction {
         }
 
         const SourceRegister GetSrc2(bool is_inverted) const {
-            if (is_inverted) {
+            if (!is_inverted) {
                 return src2;
             } else {
                 return src2i;
@@ -311,6 +314,7 @@ union Instruction {
         BitField<0x07, 0x5, SourceRegister> src2;
         BitField<0x0c, 0x7, SourceRegister> src1;
 
+        // TODO: 1c and 1i use different layouts for this...
         BitField<0x07, 0x7, SourceRegister> src1i;
         BitField<0x0e, 0x5, SourceRegister> src2i;
 
@@ -403,15 +407,10 @@ union Instruction {
         BitField<0x00, 0x8, uint32_t> num_instructions;
         BitField<0x0a, 0xc, uint32_t> dest_offset;
         BitField<0x16, 0x2, Op> op;
-        BitField<0x18, 0x1, uint32_t> negy;
-        BitField<0x19, 0x1, uint32_t> negx;
-    } conditional;
+        BitField<0x16, 0x4, uint32_t> bool_uniform_id;
 
-    // Format used for flow control instructions ("if")
-    // TODO: Likely obsolete.
-    union {
-        BitField<0x00, 0x8, uint32_t> num_instructions;
-        BitField<0x0a, 0xc, uint32_t> offset_words;
+        BitField<0x18, 0x1, uint32_t> refy;
+        BitField<0x19, 0x1, uint32_t> refx;
     } flow_control;
 };
 static_assert(sizeof(Instruction) == 0x4, "Incorrect structure size");
