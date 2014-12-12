@@ -145,7 +145,7 @@ union Instruction {
         RCP     = 0x0E,
         RSQ     = 0x0F,
 
-        ARL     = 0x12,   // Address Register Load
+        MOVA    = 0x12,   // Move to Address Register
         MOV     = 0x13,
 
         END     = 0x21,
@@ -194,7 +194,7 @@ union Instruction {
             OneArgument = OpDesc | Src1 | Idx | Dest,
             TwoArguments = OneArgument | Src2,
             Compare = OpDesc | Idx | Src1 | Src2 | CompareOps,
-            AddressRegisterLoad,
+            MOVA,
         };
 
         // Flow Control
@@ -257,7 +257,7 @@ union Instruction {
                 { OpCode::MIN,     { OpCodeType::Arithmetic,         OpCodeInfo::TwoArguments,        "min" } },
                 { OpCode::RCP,     { OpCodeType::Arithmetic,         OpCodeInfo::OneArgument,         "rcp" } },
                 { OpCode::RSQ,     { OpCodeType::Arithmetic,         OpCodeInfo::OneArgument,         "rsq" } },
-                { OpCode::ARL,     { OpCodeType::Arithmetic,         OpCodeInfo::AddressRegisterLoad, "arl" } },
+                { OpCode::MOVA,    { OpCodeType::Arithmetic,         OpCodeInfo::MOVA,                "mova" } },
                 { OpCode::MOV,     { OpCodeType::Arithmetic,         OpCodeInfo::OneArgument,         "mov" } },
                 { OpCode::NOP,     { OpCodeType::Trivial,            0,                               "nop" } },
                 { OpCode::END,     { OpCodeType::Trivial,            0,                               "end" } },
