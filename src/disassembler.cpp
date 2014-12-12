@@ -176,7 +176,7 @@ int main(int argc, char *argv[])
         // TODO: Not sure if name lookup works properly, yet!
 
         if (instr.opcode.GetInfo().type == Instruction::OpCodeType::Arithmetic) {
-            bool src_reversed = (instr.opcode.GetInfo().subtype == static_cast<uint32_t>(Instruction::OpCodeType::ArithmeticInversed));
+            bool src_reversed = 0 != (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::SrcInversed);
             auto src1 = instr.common.GetSrc1(src_reversed);
             auto src2 = instr.common.GetSrc2(src_reversed);
 
@@ -219,27 +219,27 @@ int main(int argc, char *argv[])
             const char* ops[] = {
                 " || ", " && ", "", ""
             };
-            bool show_x = instr.conditional.op != instr.conditional.JustY;
-            bool show_y = instr.conditional.op != instr.conditional.JustX;
+            bool show_x = instr.flow_control.op != instr.flow_control.JustY;
+            bool show_y = instr.flow_control.op != instr.flow_control.JustX;
             if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::JustCondition) {
                 if (show_x)
-                    std::cout << ((has_neg_x && instr.conditional.negx) ? "!" : " ") << "cc.x";
-                std::cout << ops[instr.conditional.op];
+                    std::cout << ((has_neg_x && !instr.flow_control.refx) ? "!" : " ") << "cc.x";
+                std::cout << ops[instr.flow_control.op];
                 if (show_y)
-                    std::cout << ((has_neg_y && instr.conditional.negy) ? "!" : " ") << "cc.y";
+                    std::cout << ((has_neg_y && !instr.flow_control.refy) ? "!" : " ") << "cc.y";
 
                 std::cout << "  ";
             }
 
             if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::Dst) {
-                std::cout << "to 0x" << std::setw(4) << std::right << std::setfill('0') << 4 * instr.conditional.dest_offset
-                          << " aka \"" << shader_info.GetLabel(instr.conditional.dest_offset) << "\"";
+                std::cout << "to 0x" << std::setw(4) << std::right << std::setfill('0') << 4 * instr.flow_control.dest_offset
+                          << " aka \"" << shader_info.GetLabel(instr.flow_control.dest_offset) << "\"";
             }
 
             if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::Num) {
                 // TODO: This is actually "Up till exclusively"
-                std::cout << " to 0x" << std::setw(4) << std::right << std::setfill('0') << 4 * instr.conditional.dest_offset + 4 * instr.conditional.num_instructions + 4
-                          << " aka \"" << shader_info.GetLabel(instr.conditional.dest_offset + instr.conditional.num_instructions + 1) << "\"";
+                std::cout << " to 0x" << std::setw(4) << std::right << std::setfill('0') << 4 * instr.flow_control.dest_offset + 4 * instr.flow_control.num_instructions + 4
+                          << " aka \"" << shader_info.GetLabel(instr.flow_control.dest_offset + instr.flow_control.num_instructions + 1) << "\"";
             }
 
             std::cout << std::endl;

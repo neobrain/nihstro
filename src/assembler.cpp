@@ -55,17 +55,17 @@ struct Atomic {
     bool negate;
     int relative_address_source;
 
-    const Instruction::RegisterType GetType() const {
+    const RegisterType GetType() const {
         if (register_index >= (int)RegisterSpace::Address)
-            return Instruction::Address;
+            return RegisterType::Address;
         else if (register_index >= (int)RegisterSpace::Output)
-            return Instruction::Output;
+            return RegisterType::Output;
         else if (register_index >= (int)RegisterSpace::FloatUniform)
-            return Instruction::FloatUniform;
+            return RegisterType::FloatUniform;
         else if (register_index >= (int)RegisterSpace::Temporary)
-            return Instruction::Temporary;
+            return RegisterType::Temporary;
         else if (register_index >= (int)RegisterSpace::Input)
-            return Instruction::Input;
+            return RegisterType::Input;
     }
 
     int GetIndex() const {
@@ -297,13 +297,13 @@ int main(int argc, char* argv[])
                     if (num_args != num_inputs + 1)
                         throw "Incorrect number of arguments. Expected " + std::to_string(num_inputs + 1) + ", got " + std::to_string(num_args);
 
-                    auto AssertRegisterReadable = [](Instruction::RegisterType type) {
-                        if (type != Instruction::Input && type != Instruction::Temporary &&
-                            type != Instruction::FloatUniform)
+                    auto AssertRegisterReadable = [](RegisterType type) {
+                        if (type != RegisterType::Input && type != RegisterType::Temporary &&
+                            type != RegisterType::FloatUniform)
                             throw "Specified register is not readable (only input, temporary and uniform registers are writeable)";
                     };
-                    auto AssertRegisterWriteable = [](Instruction::RegisterType type, int index) {
-                        if (type != Instruction::Output && type != Instruction::Temporary)
+                    auto AssertRegisterWriteable = [](RegisterType type, int index) {
+                        if (type != RegisterType::Output && type != RegisterType::Temporary)
                             throw "Specified register " + std::to_string((int)type) + " " + std::to_string(index) + " is not writeable (only output and temporary registers are writeable)";
                     };
                     AssertRegisterWriteable(arguments[0].GetType(), arguments[0].GetIndex());
@@ -316,23 +316,23 @@ int main(int argc, char* argv[])
                     if (num_inputs > 1) {
                         AssertRegisterReadable(arguments[2].GetType());
 
-                        if (arguments[1].GetType() == Instruction::FloatUniform &&
-                            arguments[2].GetType() == Instruction::FloatUniform) {
+                        if (arguments[1].GetType() == RegisterType::FloatUniform &&
+                            arguments[2].GetType() == RegisterType::FloatUniform) {
                             throw "Not more than one input register may be a floating point uniform";
                         }
 
                         // If second argument is a floating point register, swap it to first place
-                        if (arguments[2].GetType() == Instruction::FloatUniform) {
+                        if (arguments[2].GetType() == RegisterType::FloatUniform) {
                             boost::swap(arguments[1], arguments[2]);
                         }
 
-                        shinst.common.src2.InitializeFromTypeAndIndex(arguments[2].GetType(), arguments[2].GetIndex());
+                        shinst.common.src2.Value().InitializeFromTypeAndIndex(arguments[2].GetType(), arguments[2].GetIndex());
                         input_mask_src2 = arguments[2].mask;
                     }
                     input_mask_src1 = arguments[1].mask;
 
                     shinst.common.dest.InitializeFromTypeAndIndex(arguments[0].GetType(), arguments[0].GetIndex());
-                    shinst.common.src1.InitializeFromTypeAndIndex(arguments[1].GetType(), arguments[1].GetIndex());
+                    shinst.common.src1.Value().InitializeFromTypeAndIndex(arguments[1].GetType(), arguments[1].GetIndex());
 
                     const bool is_dot_product = (shinst.opcode == Instruction::OpCode::DP3 ||
                                                  shinst.opcode == Instruction::OpCode::DP4);
