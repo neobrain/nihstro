@@ -27,6 +27,8 @@
 
 #include "nihstro/parser_shbin.h"
 
+using namespace nihstro;
+
 void ShbinParser::ReadHeaders(const std::string& filename) {
     file.exceptions(std::fstream::badbit | std::fstream::failbit | std::fstream::eofbit);
     file.open(filename, std::fstream::in | std::fstream::binary);

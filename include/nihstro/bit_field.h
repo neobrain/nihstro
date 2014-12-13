@@ -31,7 +31,13 @@
 #include <limits>
 #include <type_traits>
 
-#define __forceinline
+#ifndef __forceinline
+#ifndef _WIN32
+#define __forceinline inline __attribute__((always_inline))
+#endif
+#endif
+
+namespace nihstro {
 
 /*
  * Abstract bitfield class
@@ -64,7 +70,7 @@
  *     u32 hex;
  *
  *     BitField<0,7,u32> first_seven_bits;     // unsigned
- *     BitField<7,8,32> next_eight_bits;       // unsigned
+ *     BitField<7,8,u32> next_eight_bits;      // unsigned
  *     BitField<3,15,s32> some_signed_fields;  // signed
  * };
  *
@@ -192,3 +198,5 @@ private:
     static_assert(std::is_standard_layout<T>::value, "Invalid base type");
 };
 #pragma pack()
+
+} // namespace

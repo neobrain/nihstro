@@ -45,6 +45,8 @@
 using namespace boost::spirit;
 namespace phoenix = boost::phoenix;
 
+using namespace nihstro;
+
 class Diagnostics
 {
 public:
