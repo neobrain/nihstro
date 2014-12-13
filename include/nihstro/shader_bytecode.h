@@ -191,10 +191,10 @@ union Instruction {
             Dest        = 16,
             SrcInversed = 32,
             CompareOps  = 64,
+            MOVA        = 128 | OpDesc | Src1 | Idx,
             OneArgument = OpDesc | Src1 | Idx | Dest,
             TwoArguments = OneArgument | Src2,
             Compare = OpDesc | Idx | Src1 | Src2 | CompareOps,
-            MOVA,
         };
 
         // Flow Control
@@ -353,9 +353,9 @@ union Instruction {
 
         std::string AddressRegisterName() const {
             if (address_register_index == 0) return "";
-            else if (address_register_index == 1) return "a0";
-            else if (address_register_index == 2) return "a1";
-            else /*if (address_register_index == 3)*/ return "lcnt";
+            else if (address_register_index == 1) return "a0.x";
+            else if (address_register_index == 2) return "a0.y";
+            else /*if (address_register_index == 3)*/ return "aL";
         }
 
         struct : BitField<0x15, 0x5, uint32_t>
