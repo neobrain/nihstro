@@ -400,12 +400,13 @@ union Instruction {
         enum Op : uint32_t {
             Or    = 0,
             And   = 1,
-            JustX = 2,
-            JustY = 3
+            JustY = 2,
+            JustX = 3
         };
 
         BitField<0x00, 0x8, uint32_t> num_instructions;
         BitField<0x0a, 0xc, uint32_t> dest_offset;
+
         BitField<0x16, 0x2, Op> op;
         BitField<0x16, 0x4, uint32_t> bool_uniform_id;
 
