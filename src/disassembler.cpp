@@ -39,6 +39,8 @@
 #include "nihstro/shader_bytecode.h"
 #include "nihstro/parser_shbin.h"
 
+using namespace nihstro;
+
 struct float24 {
     static float24 FromFloat32(float val) {
         float24 ret;

@@ -33,6 +33,8 @@
 
 #include "nihstro/shader_binary.h"
 
+namespace nihstro {
+
 struct ShaderInfo {
     std::vector<Instruction> code;
     std::vector<SwizzleInfo> swizzle_info;
@@ -198,3 +200,6 @@ public:
 
     uint32_t main_offset;
 };
+
+
+} // namespace

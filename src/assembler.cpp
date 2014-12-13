@@ -35,6 +35,8 @@
 #include "nihstro/shader_binary.h"
 #include "nihstro/shader_bytecode.h"
 
+using namespace nihstro;
+
 enum class RegisterSpace : int {
     Input        = 0,
     Temporary    = 0x10,

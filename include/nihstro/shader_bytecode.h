@@ -34,7 +34,7 @@
 
 #include "bit_field.h"
 
-#pragma pack(1)
+namespace nihstro {
 
 enum class RegisterType {
     Input,
@@ -123,15 +123,18 @@ private:
     uint32_t value;
 };
 
+} // namespace nihstro
+
 namespace std {
-
-template<>
-struct make_unsigned<SourceRegister> {
-    using type = SourceRegister;
-};
-
+    template<>
+    struct make_unsigned<nihstro::SourceRegister> {
+        using type = nihstro::SourceRegister;
+    };
 }
 
+namespace nihstro {
+
+#pragma pack(1)
 union Instruction {
     enum class OpCode : uint32_t {
         ADD     = 0x00,
@@ -529,3 +532,5 @@ static_assert(sizeof(SwizzlePattern) == 0x4, "Incorrect structure size");
 
 
 #pragma pack()
+
+} // namespace

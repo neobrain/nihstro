@@ -31,6 +31,8 @@
 
 #include "shader_bytecode.h"
 
+namespace nihstro {
+
 #pragma pack(1)
 struct DVLBHeader {
     enum : uint32_t {
@@ -192,3 +194,5 @@ struct UniformInfo {
 };
 
 #pragma pack()
+
+} // namespace

@@ -38,6 +38,8 @@
 #include "shader_binary.h"
 #include "shader_bytecode.h"
 
+namespace nihstro {
+
 struct InputSwizzlerMask {
     int num_components;
 
@@ -206,3 +208,5 @@ private:
 //    std::unique_ptr<ParserImpl> impl;
     ParserImpl* impl;
 };
+
+} // namespace
