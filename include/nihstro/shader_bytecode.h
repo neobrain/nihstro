@@ -148,8 +148,8 @@ union Instruction {
         MOVA    = 0x12,   // Move to Address Register
         MOV     = 0x13,
 
-        END     = 0x21,
-        NOP     = 0x22,
+        NOP     = 0x21,
+        END     = 0x22,
         BREAKC  = 0x23,
 
         CALL    = 0x24,
