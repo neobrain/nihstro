@@ -46,14 +46,14 @@ enum class RegisterType {
 };
 
 static std::string GetRegisterName(RegisterType type) {
-    std::map<RegisterType, std::string> map = {
-        { RegisterType::Input, "v" },
-        { RegisterType::Output, "o" },
-        { RegisterType::Temporary, "r" },
-        { RegisterType::FloatUniform, "c" },
-        { RegisterType::Unknown, "u" },
-    };
-    return map[type];
+    switch (type) {
+    case RegisterType::Input:        return "v";
+    case RegisterType::Output:       return "o";
+    case RegisterType::Temporary:    return "r";
+    case RegisterType::FloatUniform: return "c";
+    case RegisterType::Unknown:      return "u";
+    default:                         return "";
+    }
 }
 
 struct SourceRegister {
@@ -220,7 +220,7 @@ union Instruction {
 
         uint32_t subtype;
 
-        std::string name;
+        const char* name;
 
         size_t NumArguments() const {
             if (type == OpCodeType::Arithmetic) {
@@ -250,39 +250,36 @@ union Instruction {
         }
 
         OpCodeInfo GetInfo() const {
-            std::map<OpCode, OpCodeInfo> map = {
+            switch (EffectiveOpCode()) {
+            case OpCode::ADD:     return { OpCodeType::Arithmetic,         OpCodeInfo::TwoArguments,        "add" };
+            case OpCode::DP3:     return { OpCodeType::Arithmetic,         OpCodeInfo::TwoArguments,        "dp3" };
+            case OpCode::DP4:     return { OpCodeType::Arithmetic,         OpCodeInfo::TwoArguments,        "dp4" };
+            case OpCode::MUL:     return { OpCodeType::Arithmetic,         OpCodeInfo::TwoArguments,        "mul" };
+            case OpCode::MAX:     return { OpCodeType::Arithmetic,         OpCodeInfo::TwoArguments,        "max" };
+            case OpCode::MIN:     return { OpCodeType::Arithmetic,         OpCodeInfo::TwoArguments,        "min" };
+            case OpCode::RCP:     return { OpCodeType::Arithmetic,         OpCodeInfo::OneArgument,         "rcp" };
+            case OpCode::RSQ:     return { OpCodeType::Arithmetic,         OpCodeInfo::OneArgument,         "rsq" };
+            case OpCode::MOVA:    return { OpCodeType::Arithmetic,         OpCodeInfo::MOVA,                "mova" };
+            case OpCode::MOV:     return { OpCodeType::Arithmetic,         OpCodeInfo::OneArgument,         "mov" };
+            case OpCode::NOP:     return { OpCodeType::Trivial,            0,                               "nop" };
+            case OpCode::END:     return { OpCodeType::Trivial,            0,                               "end" };
+            case OpCode::BREAKC:  return { OpCodeType::Conditional,        OpCodeInfo::JustCondition,       "breakc" };
+            case OpCode::CALL:    return { OpCodeType::Conditional,        OpCodeInfo::JustDstNum,          "call" };
+            case OpCode::CALLC:   return { OpCodeType::Conditional,        OpCodeInfo::Full,                "callc" };
+            case OpCode::CALLU:   return { OpCodeType::UniformFlowControl, OpCodeInfo::FullAndBool,         "callu" };
+            case OpCode::IFU:     return { OpCodeType::UniformFlowControl, OpCodeInfo::FullAndBool,         "ifu" };
+            case OpCode::IFC:     return { OpCodeType::Conditional,        OpCodeInfo::Full,                "ifc" };
+            case OpCode::FOR:     return { OpCodeType::UniformFlowControl, OpCodeInfo::SimpleAndInt,        "for" };
+            case OpCode::EMIT:    return { OpCodeType::Trivial,            0,                               "emit" };
+            case OpCode::SETEMIT: return { OpCodeType::SetEmit,            0,                               "setemit" };
+            case OpCode::JMPC:    return { OpCodeType::Conditional,        OpCodeInfo::JustConditionAndDst, "jmpc" };
+            case OpCode::CMP:     return { OpCodeType::Arithmetic,         OpCodeInfo::Compare,             "cmp" };
+            case OpCode::LRP:     return { OpCodeType::MultiplyAdd,        0,                               "lrp" };
+            case OpCode::MAD:     return { OpCodeType::MultiplyAdd,        0,                               "mad" };
 
-                { OpCode::ADD,     { OpCodeType::Arithmetic,         OpCodeInfo::TwoArguments,        "add" } },
-                { OpCode::DP3,     { OpCodeType::Arithmetic,         OpCodeInfo::TwoArguments,        "dp3" } },
-                { OpCode::DP4,     { OpCodeType::Arithmetic,         OpCodeInfo::TwoArguments,        "dp4" } },
-                { OpCode::MUL,     { OpCodeType::Arithmetic,         OpCodeInfo::TwoArguments,        "mul" } },
-                { OpCode::MAX,     { OpCodeType::Arithmetic,         OpCodeInfo::TwoArguments,        "max" } },
-                { OpCode::MIN,     { OpCodeType::Arithmetic,         OpCodeInfo::TwoArguments,        "min" } },
-                { OpCode::RCP,     { OpCodeType::Arithmetic,         OpCodeInfo::OneArgument,         "rcp" } },
-                { OpCode::RSQ,     { OpCodeType::Arithmetic,         OpCodeInfo::OneArgument,         "rsq" } },
-                { OpCode::MOVA,    { OpCodeType::Arithmetic,         OpCodeInfo::MOVA,                "mova" } },
-                { OpCode::MOV,     { OpCodeType::Arithmetic,         OpCodeInfo::OneArgument,         "mov" } },
-                { OpCode::NOP,     { OpCodeType::Trivial,            0,                               "nop" } },
-                { OpCode::END,     { OpCodeType::Trivial,            0,                               "end" } },
-                { OpCode::BREAKC,  { OpCodeType::Conditional,        OpCodeInfo::JustCondition,       "breakc" } },
-                { OpCode::CALL,    { OpCodeType::Conditional,        OpCodeInfo::JustDstNum,          "call" } },
-                { OpCode::CALLC,   { OpCodeType::Conditional,        OpCodeInfo::Full,                "callc" } },
-                { OpCode::CALLU,   { OpCodeType::UniformFlowControl, OpCodeInfo::FullAndBool,         "callu" } },
-                { OpCode::IFU,     { OpCodeType::UniformFlowControl, OpCodeInfo::FullAndBool,         "ifu" } },
-                { OpCode::IFC,     { OpCodeType::Conditional,        OpCodeInfo::Full,                "ifc" } },
-                { OpCode::FOR,     { OpCodeType::UniformFlowControl, OpCodeInfo::SimpleAndInt,        "for" } },
-                { OpCode::EMIT,    { OpCodeType::Trivial,            0,                               "emit" } },
-                { OpCode::SETEMIT, { OpCodeType::SetEmit,            0,                               "setemit" } },
-                { OpCode::JMPC,    { OpCodeType::Conditional,        OpCodeInfo::JustConditionAndDst, "jmpc" } },
-                { OpCode::CMP,     { OpCodeType::Arithmetic,         OpCodeInfo::Compare,             "cmp" } },
-                { OpCode::LRP,     { OpCodeType::MultiplyAdd,        0,                               "lrp" } },
-                { OpCode::MAD,     { OpCodeType::MultiplyAdd,        0,                               "mad" } },
-            };
-            auto it = map.find(EffectiveOpCode());
-            if (it == map.end())
-                return { OpCodeType::Unknown, 0, std::string("UNK") + std::to_string(static_cast<int>(this->Value())) };
-            else
-                return it->second;
+            default:
+                return { OpCodeType::Unknown, 0, "UNK" };
+            }
         }
     } opcode;
 
@@ -340,17 +337,17 @@ union Instruction {
             BitField<0x18, 0x3, Op> x;
 
             const std::string ToString(Op op) const {
-                std::map<Op, std::string> map = {
-                    { Equal, "==" },
-                    { NotEqual, "!=" },
-                    { LessThan, "<" },
-                    { LessEqual, "<=" },
-                    { GreaterThan, ">" },
-                    { GreaterEqual, ">=" },
-                    { Unk6, "UNK6" },
-                    { Unk7, "UNK7" }
+                switch (op) {
+                case Equal:        return "==";
+                case NotEqual:     return "!=";
+                case LessThan:     return "<";
+                case LessEqual:    return "<=";
+                case GreaterThan:  return ">";
+                case GreaterEqual: return ">=";
+                case Unk6:         return "UNK6";
+                case Unk7:         return "UNK7";
+                default:           return "";
                 };
-                return map[op];
             }
         } compare_op;
 
