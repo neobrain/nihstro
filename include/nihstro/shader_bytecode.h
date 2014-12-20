@@ -321,7 +321,7 @@ union Instruction {
         // Address register value is used for relative addressing of src1
         BitField<0x13, 0x2, uint32_t> address_register_index;
 
-        union {
+        union CompareOpType {  // TODO: Make nameless once MSVC supports it
             enum Op : uint32_t {
                 Equal        = 0,
                 NotEqual     = 1,
@@ -396,7 +396,7 @@ union Instruction {
         } dest;
     } common;
 
-    union {
+    union FlowControlType {  // TODO: Make nameless once MSVC supports it
         enum Op : uint32_t {
             Or    = 0,
             And   = 1,
