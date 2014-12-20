@@ -410,8 +410,8 @@ union Instruction {
         BitField<0x16, 0x2, Op> op;
         BitField<0x16, 0x4, uint32_t> bool_uniform_id;
 
-        BitField<0x18, 0x1, uint32_t> refy;
-        BitField<0x19, 0x1, uint32_t> refx;
+        BitFlag<0x18, uint32_t> refy;
+        BitFlag<0x19, uint32_t> refx;
     } flow_control;
 };
 static_assert(sizeof(Instruction) == 0x4, "Incorrect structure size");
@@ -507,19 +507,19 @@ union SwizzlePattern {
     // Components of "dest" that should be written to: LSB=dest.w, MSB=dest.x
     BitField< 0, 4, uint32_t> dest_mask;
 
-    BitField< 4, 1, uint32_t> negate_src1;
+    BitFlag < 4,    uint32_t> negate_src1;
     BitField< 5, 2, Selector> src1_selector_3;
     BitField< 7, 2, Selector> src1_selector_2;
     BitField< 9, 2, Selector> src1_selector_1;
     BitField<11, 2, Selector> src1_selector_0;
 
-    BitField<13, 1, uint32_t> negate_src2;
+    BitFlag <13,    uint32_t> negate_src2;
     BitField<14, 2, Selector> src2_selector_3;
     BitField<16, 2, Selector> src2_selector_2;
     BitField<18, 2, Selector> src2_selector_1;
     BitField<20, 2, Selector> src2_selector_0;
 
-    BitField<22, 1, uint32_t> negate_src3;
+    BitFlag <22,    uint32_t> negate_src3;
     BitField<23, 2, Selector> src3_selector_3;
     BitField<25, 2, Selector> src3_selector_2;
     BitField<27, 2, Selector> src3_selector_1;

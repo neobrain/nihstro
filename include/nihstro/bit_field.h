@@ -197,6 +197,46 @@ private:
     static_assert(bits > 0, "Invalid number of bits");
     static_assert(std::is_standard_layout<T>::value, "Invalid base type");
 };
+
+/**
+ * Abstract bit flag class. This is basically a specialization  of BitField for single-bit fields.
+ * Instead of being cast to the underlying type, it acts like a boolean.
+ */
+template<std::size_t position, typename T>
+struct BitFlag : protected BitField<position, 1, T>
+{
+private:
+    BitFlag(T val) = delete;
+
+    typedef BitField<position, 1, T> ParentType;
+
+public:
+    BitFlag() = default;
+
+#ifndef _WIN32
+    BitFlag& operator=(const BitFlag&) = delete;
+#endif
+
+    __forceinline BitFlag& operator=(bool val)
+    {
+        Assign(val);
+        return *this;
+    }
+
+    __forceinline operator bool() const
+    {
+        return Value();
+    }
+
+    __forceinline void Assign(bool value) {
+        ParentType::Assign(value);
+    }
+
+    __forceinline bool Value() const
+    {
+        return ParentType::Value() != 0;
+    }
+};
 #pragma pack()
 
 } // namespace
