@@ -409,6 +409,7 @@ union Instruction {
 
         BitField<0x16, 0x2, Op> op;
         BitField<0x16, 0x4, uint32_t> bool_uniform_id;
+        BitField<0x16, 0x2, uint32_t> int_uniform_id; // TODO: Verify that only this many bits are used...
 
         BitFlag<0x18, uint32_t> refy;
         BitFlag<0x19, uint32_t> refx;
