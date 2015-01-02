@@ -216,32 +216,40 @@ int main(int argc, char *argv[])
 
             std::cout << std::endl;
         } else if (instr.opcode.GetInfo().type == Instruction::OpCodeType::Conditional) {
-            bool has_neg_x = instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::NegX;
-            bool has_neg_y = instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::NegY;
-            const char* ops[] = {
-                " || ", " && ", "", ""
-            };
-            bool show_x = instr.flow_control.op != instr.flow_control.JustY;
-            bool show_y = instr.flow_control.op != instr.flow_control.JustX;
-            if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::JustCondition) {
-                if (show_x)
-                    std::cout << ((has_neg_x && !instr.flow_control.refx) ? "!" : " ") << "cc.x";
+            std::cout << "if ";
+
+            if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::HasCondition) {
+                const char* ops[] = {
+                    " || ", " && ", "", ""
+                };
+                if (instr.flow_control.op != instr.flow_control.JustY)
+                    std::cout << ((!instr.flow_control.refx) ? "!" : " ") << "cc.x";
+
                 std::cout << ops[instr.flow_control.op];
-                if (show_y)
-                    std::cout << ((has_neg_y && !instr.flow_control.refy) ? "!" : " ") << "cc.y";
 
-                std::cout << "  ";
+                if (instr.flow_control.op != instr.flow_control.JustX)
+                    std::cout << ((!instr.flow_control.refy) ? "!" : " ") << "cc.y";
+
+                std::cout << " ";
+            } else if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::HasUniformIndex) {
+                std::cout << "b" << instr.flow_control.bool_uniform_id << " ";
             }
 
-            if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::Dst) {
-                std::cout << "to 0x" << std::setw(4) << std::right << std::setfill('0') << 4 * instr.flow_control.dest_offset
+            uint32_t target_addr = instr.flow_control.dest_offset;
+            uint32_t target_addr_else = instr.flow_control.dest_offset;
+
+            if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::HasAlternative) {
+                std::cout << "else jump to 0x" << std::setw(4) << std::right << std::setfill('0') << 4 * instr.flow_control.dest_offset
                           << " aka \"" << shader_info.GetLabel(instr.flow_control.dest_offset) << "\"";
+            } else if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::HasExplicitDest) {
+                std::cout << "jump to 0x" << std::setw(4) << std::right << std::setfill('0') << 4 * instr.flow_control.dest_offset
+                          << " aka \"" << shader_info.GetLabel(instr.flow_control.dest_offset) << "\"";
+            } else {
+                // TODO: Handle other cases
             }
 
-            if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::Num) {
-                // TODO: This is actually "Up till exclusively"
-                std::cout << " to 0x" << std::setw(4) << std::right << std::setfill('0') << 4 * instr.flow_control.dest_offset + 4 * instr.flow_control.num_instructions + 4
-                          << " aka \"" << shader_info.GetLabel(instr.flow_control.dest_offset + instr.flow_control.num_instructions + 1) << "\"";
+            if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::HasFinishPoint) {
+                std::cout << "(return on " << std::setw(4) << std::right << std::setfill('0') << 4 * instr.flow_control.dest_offset + 4 * instr.flow_control.num_instructions << "\")";
             }
 
             std::cout << std::endl;
