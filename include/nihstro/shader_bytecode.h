@@ -160,15 +160,15 @@ union Instruction {
         CALLU   = 0x26,
         IFU     = 0x27,
         IFC     = 0x28,
-        FOR     = 0x29,
+        LOOP    = 0x29,
         EMIT    = 0x2A,
         SETEMIT = 0x2B,
         JMPC    = 0x2C,
-
+        JMPU    = 0x2D,
         CMP     = 0x2E, // LSB opcode bit ignored
 
         // lower 3 opcode bits ignored for these
-        LRP     = 0x30,
+        MADI    = 0x30,
         MAD     = 0x38, // lower 3 opcode bits ignored
     };
 
@@ -202,15 +202,24 @@ union Instruction {
 
         // Flow Control
         enum : uint32_t {
-            Dst                 = 1,
-            Num                 = 2,
-            JustDstNum          = Dst | Num,
-            Op                  = 4,
-            NegY                = 8,
-            NegX                = 16,
-            JustCondition       = Op | NegY | NegX,
-            JustConditionAndDst = JustCondition | Dst,
-            Full                = JustConditionAndDst | Num
+            HasUniformIndex = 1,
+            HasCondition    = 2,
+            HasExplicitDest = 4,   // target code given explicitly and context-independently (contrary to e.g. BREAKC)
+            HasFinishPoint  = 8,   // last instruction until returning to caller
+            HasAlternative  = 16,  // has an "else" branch
+            LOOP            = 32,
+
+            BREAKC          = HasCondition,
+
+            JMP             = HasExplicitDest,
+            JMPC            = JMP | HasCondition,
+            JMPU            = JMP | HasUniformIndex,
+
+            CALL            = JMP | HasFinishPoint,
+            CALLC           = CALL | HasCondition,
+            CALLU           = CALL | HasUniformIndex,
+            IFU             = CALLU | HasAlternative,
+            IFC             = CALLC | HasAlternative,
         };
 
         enum : uint32_t {
@@ -241,8 +250,8 @@ union Instruction {
             uint32_t op = static_cast<uint32_t>(this->Value());
             if (static_cast<OpCode>(op & ~0x7) == OpCode::MAD)
                 return OpCode::MAD;
-            else if (static_cast<OpCode>(op & ~0x7) == OpCode::LRP)
-                return OpCode::LRP;
+            else if (static_cast<OpCode>(op & ~0x7) == OpCode::MADI)
+                return OpCode::MADI;
             else if (static_cast<OpCode>(op & ~0x1) == OpCode::CMP)
                 return OpCode::CMP;
             else
@@ -263,18 +272,19 @@ union Instruction {
             case OpCode::MOV:     return { OpCodeType::Arithmetic,         OpCodeInfo::OneArgument,         "mov" };
             case OpCode::NOP:     return { OpCodeType::Trivial,            0,                               "nop" };
             case OpCode::END:     return { OpCodeType::Trivial,            0,                               "end" };
-            case OpCode::BREAKC:  return { OpCodeType::Conditional,        OpCodeInfo::JustCondition,       "breakc" };
-            case OpCode::CALL:    return { OpCodeType::Conditional,        OpCodeInfo::JustDstNum,          "call" };
-            case OpCode::CALLC:   return { OpCodeType::Conditional,        OpCodeInfo::Full,                "callc" };
-            case OpCode::CALLU:   return { OpCodeType::UniformFlowControl, OpCodeInfo::FullAndBool,         "callu" };
-            case OpCode::IFU:     return { OpCodeType::UniformFlowControl, OpCodeInfo::FullAndBool,         "ifu" };
-            case OpCode::IFC:     return { OpCodeType::Conditional,        OpCodeInfo::Full,                "ifc" };
-            case OpCode::FOR:     return { OpCodeType::UniformFlowControl, OpCodeInfo::SimpleAndInt,        "for" };
+            case OpCode::BREAKC:  return { OpCodeType::Conditional,        OpCodeInfo::BREAKC,              "breakc" };
+            case OpCode::CALL:    return { OpCodeType::Conditional,        OpCodeInfo::CALL,                "call" };
+            case OpCode::CALLC:   return { OpCodeType::Conditional,        OpCodeInfo::CALLC,               "callc" };
+            case OpCode::CALLU:   return { OpCodeType::UniformFlowControl, OpCodeInfo::CALLU,               "callu" };
+            case OpCode::IFU:     return { OpCodeType::UniformFlowControl, OpCodeInfo::IFU,                 "ifu" };
+            case OpCode::IFC:     return { OpCodeType::Conditional,        OpCodeInfo::IFC,                 "ifc" };
+            case OpCode::LOOP:    return { OpCodeType::UniformFlowControl, OpCodeInfo::LOOP,                "loop" };
             case OpCode::EMIT:    return { OpCodeType::Trivial,            0,                               "emit" };
             case OpCode::SETEMIT: return { OpCodeType::SetEmit,            0,                               "setemit" };
-            case OpCode::JMPC:    return { OpCodeType::Conditional,        OpCodeInfo::JustConditionAndDst, "jmpc" };
+            case OpCode::JMPC:    return { OpCodeType::Conditional,        OpCodeInfo::JMPC,                "jmpc" };
+            case OpCode::JMPU:    return { OpCodeType::Conditional,        OpCodeInfo::JMPU,                "jmpu" };
             case OpCode::CMP:     return { OpCodeType::Arithmetic,         OpCodeInfo::Compare,             "cmp" };
-            case OpCode::LRP:     return { OpCodeType::MultiplyAdd,        0,                               "lrp" };
+            case OpCode::MADI:    return { OpCodeType::MultiplyAdd,        0,                               "madi" };
             case OpCode::MAD:     return { OpCodeType::MultiplyAdd,        0,                               "mad" };
 
             default:
