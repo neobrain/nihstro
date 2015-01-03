@@ -410,8 +410,8 @@ union Instruction {
         enum Op : uint32_t {
             Or    = 0,
             And   = 1,
-            JustY = 2,
-            JustX = 3
+            JustX = 2,
+            JustY = 3
         };
 
         BitField<0x00, 0x8, uint32_t> num_instructions;
