@@ -424,6 +424,16 @@ union Instruction {
         BitFlag<0x18, uint32_t> refy;
         BitFlag<0x19, uint32_t> refx;
     } flow_control;
+
+    union {
+        BitField<0x00, 0x5, uint32_t> operand_desc_id;
+
+        BitField<0x05, 0x5, SourceRegister> src3;
+        BitField<0x0a, 0x7, SourceRegister> src2;
+        BitField<0x11, 0x7, SourceRegister> src1;
+
+        BitField<0x18, 0x5, uint32_t> dest;
+    } mad;
 };
 static_assert(sizeof(Instruction) == 0x4, "Incorrect structure size");
 static_assert(std::is_standard_layout<Instruction>::value, "Structure does not have standard layout");
@@ -448,6 +458,13 @@ union SwizzlePattern {
     Selector GetSelectorSrc2(int comp) const {
         Selector selectors[] = {
             src2_selector_0, src2_selector_1, src2_selector_2, src2_selector_3
+        };
+        return selectors[comp];
+    }
+
+    Selector GetSelectorSrc3(int comp) const {
+        Selector selectors[] = {
+            src3_selector_0, src3_selector_1, src3_selector_2, src3_selector_3
         };
         return selectors[comp];
     }
