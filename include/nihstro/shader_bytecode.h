@@ -385,6 +385,7 @@ union Instruction {
                 else if (GetRegisterType() == RegisterType::Temporary)
                     return this->Value() - 0x10;
                 else // if (GetRegisterType() == RegisterType::FloatUniform)
+                    // TODO: This will lead to negative returned values...
                     return this->Value() - 0x20;
             }
 
@@ -432,7 +433,43 @@ union Instruction {
         BitField<0x0a, 0x7, SourceRegister> src2;
         BitField<0x11, 0x7, SourceRegister> src1;
 
-        BitField<0x18, 0x5, uint32_t> dest;
+        struct : BitField<0x18, 0x5, uint32_t>
+        {
+            RegisterType GetRegisterType() const {
+                if (Value() < 0x8)
+                    return RegisterType::Output;
+                else if (Value() < 0x10)
+                    return RegisterType::Unknown;
+                else
+                    return RegisterType::Temporary;
+            }
+
+            int GetIndex() const {
+                if (GetRegisterType() == RegisterType::Output)
+                    return this->Value();
+                else if (GetRegisterType() == RegisterType::Temporary)
+                    return this->Value() - 0x10;
+                else // if (GetRegisterType() == RegisterType::FloatUniform)
+                    // TODO: This will lead to negative returned values...
+                    return this->Value() - 0x20;
+            }
+
+            void InitializeFromTypeAndIndex(RegisterType type, int index) {
+                if (type == RegisterType::Output)
+                    this->Assign(index);
+                else if (type == RegisterType::Temporary)
+                    this->Assign(index + 0x10);
+                else if (type == RegisterType::FloatUniform)
+                    this->Assign(index + 0x20);
+                else {
+                    // TODO: Should throw an exception or something.
+                }
+            }
+
+            std::string GetName() const {
+                return GetRegisterName(GetRegisterType()) + std::to_string(GetIndex());
+            }
+        } dest;
     } mad;
 };
 static_assert(sizeof(Instruction) == 0x4, "Incorrect structure size");
