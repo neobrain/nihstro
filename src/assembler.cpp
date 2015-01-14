@@ -328,13 +328,13 @@ int main(int argc, char* argv[])
                             boost::swap(arguments[1], arguments[2]);
                         }
 
-                        shinst.common.src2.Value().InitializeFromTypeAndIndex(arguments[2].GetType(), arguments[2].GetIndex());
+                        shinst.common.src2 = SourceRegister::FromTypeAndIndex(arguments[2].GetType(), arguments[2].GetIndex());
                         input_mask_src2 = arguments[2].mask;
                     }
                     input_mask_src1 = arguments[1].mask;
 
                     shinst.common.dest.InitializeFromTypeAndIndex(arguments[0].GetType(), arguments[0].GetIndex());
-                    shinst.common.src1.Value().InitializeFromTypeAndIndex(arguments[1].GetType(), arguments[1].GetIndex());
+                    shinst.common.src1 = SourceRegister::FromTypeAndIndex(arguments[1].GetType(), arguments[1].GetIndex());
 
                     const bool is_dot_product = (shinst.opcode == Instruction::OpCode::DP3 ||
                                                  shinst.opcode == Instruction::OpCode::DP4);
