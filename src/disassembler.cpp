@@ -181,13 +181,14 @@ int main(int argc, char *argv[])
             bool src_reversed = 0 != (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::SrcInversed);
             auto src1 = instr.common.GetSrc1(src_reversed);
             auto src2 = instr.common.GetSrc2(src_reversed);
+            auto dest = instr.common.dest.Value();
 
             std::string src1_relative_address;
             if (!instr.common.AddressRegisterName().empty())
                 src1_relative_address = "[" + instr.common.AddressRegisterName() + "]";
 
             if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::Dest) {
-                std::cout << std::setw(4) << std::right << instr.common.dest.GetName() << "." << swizzle.DestMaskToString() << "  ";
+                std::cout << std::setw(4) << std::right << dest.GetName() << "." << swizzle.DestMaskToString() << "  ";
             } else {
                 std::cout << "    ";
             }
@@ -210,7 +211,7 @@ int main(int argc, char *argv[])
             }
 
             std::cout << std::setw(2) << instr.common.operand_desc_id.Value() << " addr:" << instr.common.address_register_index.Value()
-                      << ";      " << shader_info.LookupDestName(instr.common.dest, swizzle) << " <- " << (swizzle.negate_src1 ? "-" : "") + shader_info.LookupSourceName(src1, instr.common.address_register_index);
+                      << ";      " << shader_info.LookupDestName(dest, swizzle) << " <- " << (swizzle.negate_src1 ? "-" : "") + shader_info.LookupSourceName(src1, instr.common.address_register_index);
             if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::Src2)
                 std::cout << ", " << (swizzle.negate_src2 ? "-" : "") + shader_info.LookupSourceName(src2, 0);
 
