@@ -333,7 +333,7 @@ int main(int argc, char* argv[])
                     }
                     input_mask_src1 = arguments[1].mask;
 
-                    shinst.common.dest.InitializeFromTypeAndIndex(arguments[0].GetType(), arguments[0].GetIndex());
+                    shinst.common.dest = DestRegister::FromTypeAndIndex(arguments[0].GetType(), arguments[0].GetIndex());
                     shinst.common.src1 = SourceRegister::FromTypeAndIndex(arguments[1].GetType(), arguments[1].GetIndex());
 
                     const bool is_dot_product = (shinst.opcode == Instruction::OpCode::DP3 ||

@@ -125,12 +125,87 @@ private:
     uint32_t value;
 };
 
+struct DestRegister {
+    DestRegister() = default;
+
+    DestRegister(uint32_t value) {
+        this->value = value;
+    }
+
+    RegisterType GetRegisterType() const {
+        if (value < 0x8)
+            return RegisterType::Output;
+        else if (value < 0x10)
+            return RegisterType::Unknown;
+        else
+            return RegisterType::Temporary;
+    }
+
+    int GetIndex() const {
+        if (GetRegisterType() == RegisterType::Output)
+            return value;
+        else if (GetRegisterType() == RegisterType::Temporary)
+            return value - 0x10;
+        else // if (GetRegisterType() == RegisterType::FloatUniform)
+            // TODO: This will lead to negative returned values...
+            return value - 0x20;
+    }
+
+    static const DestRegister FromTypeAndIndex(RegisterType type, int index) {
+        DestRegister reg;
+        if (type == RegisterType::Output)
+            reg.value = index;
+        else if (type == RegisterType::Temporary)
+            reg.value = index + 0x10;
+        else if (type == RegisterType::FloatUniform)
+            reg.value = index + 0x20;
+        else {
+            // TODO: Should throw an exception or something.
+        }
+        return reg;
+    }
+
+    std::string GetName() const {
+        return GetRegisterName(GetRegisterType()) + std::to_string(GetIndex());
+    }
+
+    operator uint32_t() const {
+        return value;
+    }
+
+    template<typename T>
+    decltype(uint32_t{} - T{}) operator -(const T& oth) const {
+        return value - oth;
+    }
+
+    template<typename T>
+    decltype(uint32_t{} & T{}) operator &(const T& oth) const {
+        return value & oth;
+    }
+
+    uint32_t operator &(const DestRegister& oth) const {
+        return value & oth.value;
+    }
+
+    uint32_t operator ~() const {
+        return ~value;
+    }
+
+private:
+    uint32_t value;
+};
+
 } // namespace nihstro
 
 namespace std {
     template<>
     struct make_unsigned<nihstro::SourceRegister> {
         using type = nihstro::SourceRegister;
+    };
+
+    template<>
+    struct make_unsigned<nihstro::DestRegister> {
+        using type = nihstro::DestRegister;
     };
 }
 
@@ -370,43 +445,7 @@ union Instruction {
             else /*if (address_register_index == 3)*/ return "aL";
         }
 
-        struct : BitField<0x15, 0x5, uint32_t>
-        {
-            RegisterType GetRegisterType() const {
-                if (Value() < 0x8)
-                    return RegisterType::Output;
-                else if (Value() < 0x10)
-                    return RegisterType::Unknown;
-                else
-                    return RegisterType::Temporary;
-            }
-
-            int GetIndex() const {
-                if (GetRegisterType() == RegisterType::Output)
-                    return this->Value();
-                else if (GetRegisterType() == RegisterType::Temporary)
-                    return this->Value() - 0x10;
-                else // if (GetRegisterType() == RegisterType::FloatUniform)
-                    // TODO: This will lead to negative returned values...
-                    return this->Value() - 0x20;
-            }
-
-            void InitializeFromTypeAndIndex(RegisterType type, int index) {
-                if (type == RegisterType::Output)
-                    this->Assign(index);
-                else if (type == RegisterType::Temporary)
-                    this->Assign(index + 0x10);
-                else if (type == RegisterType::FloatUniform)
-                    this->Assign(index + 0x20);
-                else {
-                    // TODO: Should throw an exception or something.
-                }
-            }
-
-            std::string GetName() const {
-                return GetRegisterName(GetRegisterType()) + std::to_string(GetIndex());
-            }
-        } dest;
+        BitField<0x15, 0x5, DestRegister> dest;
     } common;
 
     union FlowControlType {  // TODO: Make nameless once MSVC supports it
@@ -435,43 +474,7 @@ union Instruction {
         BitField<0x0a, 0x7, SourceRegister> src2;
         BitField<0x11, 0x7, SourceRegister> src1;
 
-        struct : BitField<0x18, 0x5, uint32_t>
-        {
-            RegisterType GetRegisterType() const {
-                if (Value() < 0x8)
-                    return RegisterType::Output;
-                else if (Value() < 0x10)
-                    return RegisterType::Unknown;
-                else
-                    return RegisterType::Temporary;
-            }
-
-            int GetIndex() const {
-                if (GetRegisterType() == RegisterType::Output)
-                    return this->Value();
-                else if (GetRegisterType() == RegisterType::Temporary)
-                    return this->Value() - 0x10;
-                else // if (GetRegisterType() == RegisterType::FloatUniform)
-                    // TODO: This will lead to negative returned values...
-                    return this->Value() - 0x20;
-            }
-
-            void InitializeFromTypeAndIndex(RegisterType type, int index) {
-                if (type == RegisterType::Output)
-                    this->Assign(index);
-                else if (type == RegisterType::Temporary)
-                    this->Assign(index + 0x10);
-                else if (type == RegisterType::FloatUniform)
-                    this->Assign(index + 0x20);
-                else {
-                    // TODO: Should throw an exception or something.
-                }
-            }
-
-            std::string GetName() const {
-                return GetRegisterName(GetRegisterType()) + std::to_string(GetIndex());
-            }
-        } dest;
+        BitField<0x18, 0x5, DestRegister> dest;
     } mad;
 };
 static_assert(sizeof(Instruction) == 0x4, "Incorrect structure size");
