@@ -81,16 +81,18 @@ struct SourceRegister {
             return value - 0x20;
     }
 
-    void InitializeFromTypeAndIndex(RegisterType type, int index) {
+    static const SourceRegister FromTypeAndIndex(RegisterType type, int index) {
+        SourceRegister reg;
         if (type == RegisterType::Input)
-            value = index;
+            reg.value = index;
         else if (type == RegisterType::Temporary)
-            value = index + 0x10;
+            reg.value = index + 0x10;
         else if (type == RegisterType::FloatUniform)
-            value = index + 0x20;
+            reg.value = index + 0x20;
         else {
             // TODO: Should throw an exception or something.
         }
+        return reg;
     }
 
     std::string GetName() const {

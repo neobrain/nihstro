@@ -148,7 +148,7 @@ public:
         return *this;
     }
 
-    __forceinline operator T() const
+    __forceinline operator typename std::add_const<T>::type() const
     {
         return Value();
     }
@@ -157,7 +157,7 @@ public:
         storage = (storage & ~GetMask()) | (((StorageType)value << position) & GetMask());
     }
 
-    __forceinline T Value() const
+    __forceinline typename std::add_const<T>::type Value() const
     {
         if (std::numeric_limits<T>::is_signed)
         {
