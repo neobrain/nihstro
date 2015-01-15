@@ -82,7 +82,7 @@ void ShbinParser::ReadHeaders(const std::string& filename) {
     file.seekg(dvlp_offset + dvlp_header.binary_offset);
     file.read((char*)shader_info.code.data(), dvlp_header.binary_size_words * sizeof(Instruction));
 
-// Read operand descriptor table
+    // Read operand descriptor table
     shader_info.swizzle_info.resize(dvlp_header.swizzle_info_num_entries);
     file.seekg(dvlp_offset + dvlp_header.swizzle_info_offset);
     file.read((char*)shader_info.swizzle_info.data(), dvlp_header.swizzle_info_num_entries * sizeof(SwizzleInfo));

@@ -11,6 +11,8 @@ include_directories(include)
 add_executable(nihstro-disassemble src/disassembler.cpp src/parser_shbin.cpp)
 install(TARGETS nihstro-disassemble DESTINATION bin)
 
+add_subdirectory(examples/inline_assembler/simple)
+
 if(Boost_FOUND)
     include_directories(${Boost_INCLUDE_DIRS})
     add_executable(nihstro-assemble src/assembler.cpp src/parser_assembly.cpp)
