@@ -195,25 +195,8 @@ private:
     uint32_t value;
 };
 
-} // namespace nihstro
-
-namespace std {
-    template<>
-    struct make_unsigned<nihstro::SourceRegister> {
-        using type = nihstro::SourceRegister;
-    };
-
-    template<>
-    struct make_unsigned<nihstro::DestRegister> {
-        using type = nihstro::DestRegister;
-    };
-}
-
-namespace nihstro {
-
-#pragma pack(1)
-union Instruction {
-    enum class OpCode : uint32_t {
+struct OpCode {
+    enum class Id : uint32_t {
         ADD     = 0x00,
         DP3     = 0x01,
         DP4     = 0x02,
@@ -249,7 +232,7 @@ union Instruction {
         MAD     = 0x38, // lower 3 opcode bits ignored
     };
 
-    enum class OpCodeType {
+    enum class Type {
         Trivial,            // 3dbrew format 0
         Arithmetic,         // 3dbrew format 1
         Conditional,        // 3dbrew format 2
@@ -259,8 +242,8 @@ union Instruction {
         Unknown
     };
 
-    struct OpCodeInfo {
-        OpCodeType type;
+    struct Info {
+        Type type;
 
         // Arithmetic
         enum : uint32_t {
@@ -309,7 +292,7 @@ union Instruction {
         const char* name;
 
         size_t NumArguments() const {
-            if (type == OpCodeType::Arithmetic) {
+            if (type == Type::Arithmetic) {
                 if (subtype & TwoArguments)
                     return 3;
                 else if (subtype & OneArgument)
@@ -320,55 +303,123 @@ union Instruction {
         }
     };
 
+    OpCode() = default;
+
+    OpCode(Id value) {
+        this->value = static_cast<uint32_t>(value);
+    }
+
+    OpCode(uint32_t value) {
+        this->value = value;
+    }
+
+    Id EffectiveOpCode() const {
+        uint32_t op = static_cast<uint32_t>(value);
+        if (static_cast<Id>(op & ~0x7) == Id::MAD)
+            return Id::MAD;
+        else if (static_cast<Id>(op & ~0x7) == Id::MADI)
+            return Id::MADI;
+        else if (static_cast<Id>(op & ~0x1) == Id::CMP)
+            return Id::CMP;
+        else
+            return static_cast<Id>(value);
+    }
+
+    Info GetInfo() const {
+        switch (EffectiveOpCode()) {
+        case Id::ADD:     return { Type::Arithmetic,         Info::TwoArguments,        "add" };
+        case Id::DP3:     return { Type::Arithmetic,         Info::TwoArguments,        "dp3" };
+        case Id::DP4:     return { Type::Arithmetic,         Info::TwoArguments,        "dp4" };
+        case Id::MUL:     return { Type::Arithmetic,         Info::TwoArguments,        "mul" };
+        case Id::MAX:     return { Type::Arithmetic,         Info::TwoArguments,        "max" };
+        case Id::MIN:     return { Type::Arithmetic,         Info::TwoArguments,        "min" };
+        case Id::RCP:     return { Type::Arithmetic,         Info::OneArgument,         "rcp" };
+        case Id::RSQ:     return { Type::Arithmetic,         Info::OneArgument,         "rsq" };
+        case Id::MOVA:    return { Type::Arithmetic,         Info::MOVA,                "mova" };
+        case Id::MOV:     return { Type::Arithmetic,         Info::OneArgument,         "mov" };
+        case Id::NOP:     return { Type::Trivial,            0,                               "nop" };
+        case Id::END:     return { Type::Trivial,            0,                               "end" };
+        case Id::BREAKC:  return { Type::Conditional,        Info::BREAKC,              "breakc" };
+        case Id::CALL:    return { Type::Conditional,        Info::CALL,                "call" };
+        case Id::CALLC:   return { Type::Conditional,        Info::CALLC,               "callc" };
+        case Id::CALLU:   return { Type::UniformFlowControl, Info::CALLU,               "callu" };
+        case Id::IFU:     return { Type::UniformFlowControl, Info::IFU,                 "ifu" };
+        case Id::IFC:     return { Type::Conditional,        Info::IFC,                 "ifc" };
+        case Id::LOOP:    return { Type::UniformFlowControl, Info::LOOP,                "loop" };
+        case Id::EMIT:    return { Type::Trivial,            0,                               "emit" };
+        case Id::SETEMIT: return { Type::SetEmit,            0,                               "setemit" };
+        case Id::JMPC:    return { Type::Conditional,        Info::JMPC,                "jmpc" };
+        case Id::JMPU:    return { Type::Conditional,        Info::JMPU,                "jmpu" };
+        case Id::CMP:     return { Type::Arithmetic,         Info::Compare,             "cmp" };
+        case Id::MADI:    return { Type::MultiplyAdd,        0,                               "madi" };
+        case Id::MAD:     return { Type::MultiplyAdd,        0,                               "mad" };
+
+        default:
+            return { Type::Unknown, 0, "UNK" };
+        }
+    }
+
+    operator Id() const {
+        return static_cast<Id>(value);
+    }
+
+    operator uint32_t() const {
+        return value;
+    }
+
+    template<typename T>
+    decltype(uint32_t{} - T{}) operator -(const T& oth) const {
+        return value - oth;
+    }
+
+    template<typename T>
+    decltype(uint32_t{} & T{}) operator &(const T& oth) const {
+        return value & oth;
+    }
+
+    uint32_t operator &(const OpCode& oth) const {
+        return value & oth.value;
+    }
+
+    uint32_t operator ~() const {
+        return ~value;
+    }
+
+private:
+    uint32_t value;
+};
+
+} // namespace nihstro
+
+namespace std {
+    template<>
+    struct make_unsigned<nihstro::SourceRegister> {
+        using type = nihstro::SourceRegister;
+    };
+
+    template<>
+    struct make_unsigned<nihstro::DestRegister> {
+        using type = nihstro::DestRegister;
+    };
+
+    template<>
+    struct make_unsigned<nihstro::OpCode> {
+        using type = nihstro::OpCode;
+    };
+}
+
+namespace nihstro {
+
+#pragma pack(1)
+union Instruction {
+    Instruction& operator =(const Instruction& instr) {
+        hex = instr.hex;
+        return *this;
+    }
+
     uint32_t hex;
 
-    struct : BitField<0x1a, 0x6, OpCode> {
-        OpCode EffectiveOpCode() const {
-            uint32_t op = static_cast<uint32_t>(this->Value());
-            if (static_cast<OpCode>(op & ~0x7) == OpCode::MAD)
-                return OpCode::MAD;
-            else if (static_cast<OpCode>(op & ~0x7) == OpCode::MADI)
-                return OpCode::MADI;
-            else if (static_cast<OpCode>(op & ~0x1) == OpCode::CMP)
-                return OpCode::CMP;
-            else
-                return this->Value();
-        }
-
-        OpCodeInfo GetInfo() const {
-            switch (EffectiveOpCode()) {
-            case OpCode::ADD:     return { OpCodeType::Arithmetic,         OpCodeInfo::TwoArguments,        "add" };
-            case OpCode::DP3:     return { OpCodeType::Arithmetic,         OpCodeInfo::TwoArguments,        "dp3" };
-            case OpCode::DP4:     return { OpCodeType::Arithmetic,         OpCodeInfo::TwoArguments,        "dp4" };
-            case OpCode::MUL:     return { OpCodeType::Arithmetic,         OpCodeInfo::TwoArguments,        "mul" };
-            case OpCode::MAX:     return { OpCodeType::Arithmetic,         OpCodeInfo::TwoArguments,        "max" };
-            case OpCode::MIN:     return { OpCodeType::Arithmetic,         OpCodeInfo::TwoArguments,        "min" };
-            case OpCode::RCP:     return { OpCodeType::Arithmetic,         OpCodeInfo::OneArgument,         "rcp" };
-            case OpCode::RSQ:     return { OpCodeType::Arithmetic,         OpCodeInfo::OneArgument,         "rsq" };
-            case OpCode::MOVA:    return { OpCodeType::Arithmetic,         OpCodeInfo::MOVA,                "mova" };
-            case OpCode::MOV:     return { OpCodeType::Arithmetic,         OpCodeInfo::OneArgument,         "mov" };
-            case OpCode::NOP:     return { OpCodeType::Trivial,            0,                               "nop" };
-            case OpCode::END:     return { OpCodeType::Trivial,            0,                               "end" };
-            case OpCode::BREAKC:  return { OpCodeType::Conditional,        OpCodeInfo::BREAKC,              "breakc" };
-            case OpCode::CALL:    return { OpCodeType::Conditional,        OpCodeInfo::CALL,                "call" };
-            case OpCode::CALLC:   return { OpCodeType::Conditional,        OpCodeInfo::CALLC,               "callc" };
-            case OpCode::CALLU:   return { OpCodeType::UniformFlowControl, OpCodeInfo::CALLU,               "callu" };
-            case OpCode::IFU:     return { OpCodeType::UniformFlowControl, OpCodeInfo::IFU,                 "ifu" };
-            case OpCode::IFC:     return { OpCodeType::Conditional,        OpCodeInfo::IFC,                 "ifc" };
-            case OpCode::LOOP:    return { OpCodeType::UniformFlowControl, OpCodeInfo::LOOP,                "loop" };
-            case OpCode::EMIT:    return { OpCodeType::Trivial,            0,                               "emit" };
-            case OpCode::SETEMIT: return { OpCodeType::SetEmit,            0,                               "setemit" };
-            case OpCode::JMPC:    return { OpCodeType::Conditional,        OpCodeInfo::JMPC,                "jmpc" };
-            case OpCode::JMPU:    return { OpCodeType::Conditional,        OpCodeInfo::JMPU,                "jmpu" };
-            case OpCode::CMP:     return { OpCodeType::Arithmetic,         OpCodeInfo::Compare,             "cmp" };
-            case OpCode::MADI:    return { OpCodeType::MultiplyAdd,        0,                               "madi" };
-            case OpCode::MAD:     return { OpCodeType::MultiplyAdd,        0,                               "mad" };
-
-            default:
-                return { OpCodeType::Unknown, 0, "UNK" };
-            }
-        }
-    } opcode;
+    BitField<0x1a, 0x6, OpCode> opcode;
 
 
     // General notes:

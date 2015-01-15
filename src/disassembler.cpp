@@ -168,17 +168,18 @@ int main(int argc, char *argv[])
         }
 
         Instruction instr = shader_info.code[word];
+        OpCode opcode = instr.opcode.Value();
 
         std::cout << std::setw(8) << std::right << std::setfill('0') << 4*word << " "
                   << "[" << std::setw(8) << std::right << std::setfill('0') << instr.hex << "]     "
-                  << std::setw(7) << std::left << std::setfill(' ') << instr.opcode.GetInfo().name;
+                  << std::setw(7) << std::left << std::setfill(' ') << opcode.GetInfo().name;
 
         const SwizzlePattern& swizzle = shader_info.swizzle_info[instr.common.operand_desc_id].pattern;
 
         // TODO: Not sure if name lookup works properly, yet!
 
-        if (instr.opcode.GetInfo().type == Instruction::OpCodeType::Arithmetic) {
-            bool src_reversed = 0 != (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::SrcInversed);
+        if (opcode.GetInfo().type == OpCode::Type::Arithmetic) {
+            bool src_reversed = 0 != (opcode.GetInfo().subtype & OpCode::Info::SrcInversed);
             auto src1 = instr.common.GetSrc1(src_reversed);
             auto src2 = instr.common.GetSrc2(src_reversed);
             auto dest = instr.common.dest.Value();
@@ -187,24 +188,24 @@ int main(int argc, char *argv[])
             if (!instr.common.AddressRegisterName().empty())
                 src1_relative_address = "[" + instr.common.AddressRegisterName() + "]";
 
-            if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::Dest) {
+            if (opcode.GetInfo().subtype & OpCode::Info::Dest) {
                 std::cout << std::setw(4) << std::right << dest.GetName() << "." << swizzle.DestMaskToString() << "  ";
             } else {
                 std::cout << "    ";
             }
 
-            if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::Src1) {
+            if (opcode.GetInfo().subtype & OpCode::Info::Src1) {
                 std::cout << std::setw(8) << std::right << ((swizzle.negate_src1 ? "-" : "") + src1.GetName()) + src1_relative_address << "." << swizzle.SelectorToString(false) << "  ";
             } else {
                 std::cout << "           ";
             }
 
-            if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::CompareOps) {
+            if (opcode.GetInfo().subtype & OpCode::Info::CompareOps) {
                 std::cout << instr.common.compare_op.ToString(instr.common.compare_op.x) << " " << instr.common.compare_op.ToString(instr.common.compare_op.y) << " ";
             } else {
             }
 
-            if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::Src2) {
+            if (opcode.GetInfo().subtype & OpCode::Info::Src2) {
                 std::cout << std::setw(4) << std::right << (swizzle.negate_src2 ? "-" : "") + src2.GetName() << "." << swizzle.SelectorToString(true) << "   ";
             } else {
                 std::cout << "            ";
@@ -212,14 +213,14 @@ int main(int argc, char *argv[])
 
             std::cout << std::setw(2) << instr.common.operand_desc_id.Value() << " addr:" << instr.common.address_register_index.Value()
                       << ";      " << shader_info.LookupDestName(dest, swizzle) << " <- " << (swizzle.negate_src1 ? "-" : "") + shader_info.LookupSourceName(src1, instr.common.address_register_index);
-            if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::Src2)
+            if (opcode.GetInfo().subtype & OpCode::Info::Src2)
                 std::cout << ", " << (swizzle.negate_src2 ? "-" : "") + shader_info.LookupSourceName(src2, 0);
 
             std::cout << std::endl;
-        } else if (instr.opcode.GetInfo().type == Instruction::OpCodeType::Conditional) {
+        } else if (opcode.GetInfo().type == OpCode::Type::Conditional) {
             std::cout << "if ";
 
-            if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::HasCondition) {
+            if (opcode.GetInfo().subtype & OpCode::Info::HasCondition) {
                 const char* ops[] = {
                     " || ", " && ", "", ""
                 };
@@ -232,24 +233,24 @@ int main(int argc, char *argv[])
                     std::cout << ((!instr.flow_control.refy) ? "!" : " ") << "cc.y";
 
                 std::cout << " ";
-            } else if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::HasUniformIndex) {
+            } else if (opcode.GetInfo().subtype & OpCode::Info::HasUniformIndex) {
                 std::cout << "b" << instr.flow_control.bool_uniform_id << " ";
             }
 
             uint32_t target_addr = instr.flow_control.dest_offset;
             uint32_t target_addr_else = instr.flow_control.dest_offset;
 
-            if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::HasAlternative) {
+            if (opcode.GetInfo().subtype & OpCode::Info::HasAlternative) {
                 std::cout << "else jump to 0x" << std::setw(4) << std::right << std::setfill('0') << 4 * instr.flow_control.dest_offset
                           << " aka \"" << shader_info.GetLabel(instr.flow_control.dest_offset) << "\"";
-            } else if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::HasExplicitDest) {
+            } else if (opcode.GetInfo().subtype & OpCode::Info::HasExplicitDest) {
                 std::cout << "jump to 0x" << std::setw(4) << std::right << std::setfill('0') << 4 * instr.flow_control.dest_offset
                           << " aka \"" << shader_info.GetLabel(instr.flow_control.dest_offset) << "\"";
             } else {
                 // TODO: Handle other cases
             }
 
-            if (instr.opcode.GetInfo().subtype & Instruction::OpCodeInfo::HasFinishPoint) {
+            if (opcode.GetInfo().subtype & OpCode::Info::HasFinishPoint) {
                 std::cout << "(return on " << std::setw(4) << std::right << std::setfill('0') << 4 * instr.flow_control.dest_offset + 4 * instr.flow_control.num_instructions << "\")";
             }
 
