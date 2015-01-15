@@ -113,21 +113,59 @@ struct SwizzleInfo {
 };
 
 struct ConstantInfo {
+
+    ConstantInfo() = default;
+
+    ConstantInfo(const ConstantInfo& oth) {
+        full_first_word = oth.full_first_word;
+        f.x = oth.f.x;
+        f.y = oth.f.y;
+        f.z = oth.f.z;
+        f.w = oth.f.w;
+	}
+
+    ConstantInfo& operator =(const ConstantInfo& oth) {
+        full_first_word = oth.full_first_word;
+        f.x = oth.f.x;
+        f.y = oth.f.y;
+        f.z = oth.f.z;
+        f.w = oth.f.w;
+        return *this;
+    }
+
+    enum Type : uint32_t {
+        Bool  = 0,
+        Int   = 1,
+        Float = 2
+    };
+
     union {
-        // This field is a custom extension, and hence NOT OFFICIALLY SUPPORTED
-        // It was only added to support loading citra's shader dumps until citra
-        // can convert floats to float24!
-        BitField<0, 1, uint32_t> is_float32;
+        BitField<0, 2, Type> type;
 
         BitField<16, 8, uint32_t> regid;
+
         uint32_t full_first_word;
     };
 
     // float24 values..
-    uint32_t x;
-    uint32_t y;
-    uint32_t z;
-    uint32_t w;
+    union {
+        BitField<0, 1, uint32_t> b;
+
+        struct {
+            uint8_t x;
+            uint8_t y;
+            uint8_t z;
+            uint8_t w;
+        } i;
+
+        struct {
+            // All of these are float24 values!
+            uint32_t x;
+            uint32_t y;
+            uint32_t z;
+            uint32_t w;
+        } f;
+    };
 };
 
 struct LabelInfo {
@@ -145,6 +183,11 @@ union OutputRegisterInfo {
         TEXCOORD1 = 5,
         TEXCOORD2 = 6,
     };
+
+    OutputRegisterInfo& operator =(const OutputRegisterInfo& oth) {
+        hex.Assign(oth.hex);
+        return *this;
+    }
 
     BitField< 0, 64, uint64_t> hex;
 
@@ -183,6 +226,13 @@ union OutputRegisterInfo {
 };
 
 struct UniformInfo {
+    UniformInfo& operator=(const UniformInfo& oth) {
+        basic.symbol_offset = oth.basic.symbol_offset;
+        basic.reg_start.Assign(oth.basic.reg_start);
+        basic.reg_end.Assign(oth.basic.reg_end);
+        name = oth.name;
+    }
+
     struct {
         uint32_t symbol_offset;
         union {

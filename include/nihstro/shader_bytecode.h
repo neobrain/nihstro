@@ -31,6 +31,7 @@
 #include <map>
 #include <stdexcept>
 #include <string>
+#include <sstream>
 
 #include "bit_field.h"
 
@@ -95,8 +96,22 @@ struct SourceRegister {
         return reg;
     }
 
+    static const SourceRegister MakeInput(int index) {
+        return FromTypeAndIndex(RegisterType::Input, index);
+    }
+
+    static const SourceRegister MakeTemporary(int index) {
+        return FromTypeAndIndex(RegisterType::Temporary, index);
+    }
+
+    static const SourceRegister MakeFloat(int index) {
+        return FromTypeAndIndex(RegisterType::FloatUniform, index);
+    }
+
     std::string GetName() const {
-        return GetRegisterName(GetRegisterType()) + std::to_string(GetIndex());
+        std::stringstream ss;
+        ss << GetRegisterName(GetRegisterType()) << GetIndex();
+        return ss.str();
     }
 
     operator uint32_t() const {
@@ -165,8 +180,18 @@ struct DestRegister {
         return reg;
     }
 
+    static const DestRegister MakeOutput(int index) {
+        return FromTypeAndIndex(RegisterType::Output, index);
+    }
+
+    static const DestRegister MakeTemporary(int index) {
+        return FromTypeAndIndex(RegisterType::Temporary, index);
+    }
+
     std::string GetName() const {
-        return GetRegisterName(GetRegisterType()) + std::to_string(GetIndex());
+        std::stringstream ss;
+        ss << GetRegisterName(GetRegisterType()) << GetIndex();
+        return ss.str();
     }
 
     operator uint32_t() const {
@@ -527,6 +552,11 @@ static_assert(sizeof(Instruction) == 0x4, "Incorrect structure size");
 static_assert(std::is_standard_layout<Instruction>::value, "Structure does not have standard layout");
 
 union SwizzlePattern {
+    SwizzlePattern& operator =(const SwizzlePattern& instr) {
+        hex = instr.hex;
+        return *this;
+    }
+
     uint32_t hex;
 
     enum class Selector : uint32_t {
