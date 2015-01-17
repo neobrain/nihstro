@@ -162,13 +162,13 @@ private:
 using StatementLabel = std::string;
 
 // TODO: Figure out why this cannot be a std::tuple...
-struct StatementInstruction : boost::fusion::vector<Instruction::OpCode, std::vector<Expression>> {
+struct StatementInstruction : boost::fusion::vector<OpCode, std::vector<Expression>> {
     StatementInstruction() = default;
 
-    StatementInstruction(const Instruction::OpCode& opcode) : boost::fusion::vector<Instruction::OpCode, std::vector<Expression>>(opcode, std::vector<Expression>()) {
+    StatementInstruction(const OpCode& opcode) : boost::fusion::vector<OpCode, std::vector<Expression>>(opcode, std::vector<Expression>()) {
     }
 
-    const Instruction::OpCode& GetOpCode() const {
+    const OpCode& GetOpCode() const {
         return boost::fusion::at_c<0>(*this);
     }
 
