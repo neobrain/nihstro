@@ -88,7 +88,8 @@ struct Atomic {
 std::vector<Atomic> identifiers;
 
 struct DestSwizzlerMask {
-    DestSwizzlerMask(const InputSwizzlerMask& input) : component_set{false, false, false, false} {
+    DestSwizzlerMask(const InputSwizzlerMask& input) {
+        std::fill(component_set, &component_set[4], false);
         for (InputSwizzlerMask::Component comp : {InputSwizzlerMask::x, InputSwizzlerMask::y,
                                                   InputSwizzlerMask::z, InputSwizzlerMask::w}) {
             for (int i = 0; i < input.num_components; ++i) {
