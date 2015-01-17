@@ -113,7 +113,7 @@ struct AssemblySkipper : public qi::grammar<Iterator> {
     qi::rule<Iterator> skip;
 };
 
-std::ostream& operator<<(std::ostream& os, const Instruction::OpCode& opcode) {
+std::ostream& operator<<(std::ostream& os, const OpCode& opcode) {
     // TODO: Should print actual opcode here..
     return os << static_cast<uint32_t>(opcode);
 }
@@ -217,25 +217,25 @@ struct InstructionParser : qi::grammar<Iterator, StatementInstruction(), Assembl
 
         // Setup symbol table
         opcodes[0].add
-                   ( "nop",   Instruction::OpCode::NOP   )
-                   ( "end",   Instruction::OpCode::END );
+                   ( "nop",   OpCode::Id::NOP   )
+                   ( "end",   OpCode::Id::END );
         opcodes[1].add
-                   ( "mova",  Instruction::OpCode::MOVA  )
-                   ( "call",  Instruction::OpCode::CALL  );
+                   ( "mova",  OpCode::Id::MOVA  )
+                   ( "call",  OpCode::Id::CALL  );
 
         opcodes[2].add
-                   ( "mov",   Instruction::OpCode::MOV   )
-                   ( "rcp",   Instruction::OpCode::RCP   )
-                   ( "rsq",   Instruction::OpCode::RSQ   );
+                   ( "mov",   OpCode::Id::MOV   )
+                   ( "rcp",   OpCode::Id::RCP   )
+                   ( "rsq",   OpCode::Id::RSQ   );
         opcodes[3].add
-                   ( "add",   Instruction::OpCode::ADD   )
-                   ( "mul",   Instruction::OpCode::MUL   )
-                   ( "dp3",   Instruction::OpCode::DP3   )
-                   ( "dp4",   Instruction::OpCode::DP4   )
-                   ( "max",   Instruction::OpCode::MAX   )
-                   ( "min",   Instruction::OpCode::MIN   );
+                   ( "add",   OpCode::Id::ADD   )
+                   ( "mul",   OpCode::Id::MUL   )
+                   ( "dp3",   OpCode::Id::DP3   )
+                   ( "dp4",   OpCode::Id::DP4   )
+                   ( "max",   OpCode::Id::MAX   )
+                   ( "min",   OpCode::Id::MIN   );
         opcodes[4].add
-                   ( "cmp",   Instruction::OpCode::CMP   );
+                   ( "cmp",   OpCode::Id::CMP   );
 
         // Setup rules
 
@@ -288,11 +288,11 @@ struct InstructionParser : qi::grammar<Iterator, StatementInstruction(), Assembl
 
     CommonRules<Iterator> common;
 
-    qi::symbols<char, Instruction::OpCode>        opcodes[5]; // indexed by number of arguments
+    qi::symbols<char, OpCode>                     opcodes[5]; // indexed by number of arguments
 
     // Rule-ified symbols, which can be assigned names
     qi::rule<Iterator, Identifier(),              Skipper>& known_identifier;
-    qi::rule<Iterator, Instruction::OpCode(),     Skipper> opcode[5];
+    qi::rule<Iterator, OpCode(),                  Skipper> opcode[5];
 
     // Building blocks
     qi::rule<Iterator, std::string(),             Skipper>& identifier;

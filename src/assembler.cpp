@@ -292,10 +292,11 @@ int main(int argc, char* argv[])
             }
 
             int num_args = args.size();
-            switch (shinst.opcode.GetInfo().type) {
-                case Instruction::OpCodeType::Arithmetic:
+            const OpCode opcode = shinst.opcode.Value();
+            switch (opcode.GetInfo().type) {
+                case OpCode::Type::Arithmetic:
                 {
-                    const int num_inputs = shinst.opcode.GetInfo().NumArguments() - 1;
+                    const int num_inputs = opcode.GetInfo().NumArguments() - 1;
                     if (num_args != num_inputs + 1)
                         throw "Incorrect number of arguments. Expected " + std::to_string(num_inputs + 1) + ", got " + std::to_string(num_args);
 
@@ -336,11 +337,11 @@ int main(int argc, char* argv[])
                     shinst.common.dest = DestRegister::FromTypeAndIndex(arguments[0].GetType(), arguments[0].GetIndex());
                     shinst.common.src1 = SourceRegister::FromTypeAndIndex(arguments[1].GetType(), arguments[1].GetIndex());
 
-                    const bool is_dot_product = (shinst.opcode == Instruction::OpCode::DP3 ||
-                                                 shinst.opcode == Instruction::OpCode::DP4);
+                    const bool is_dot_product = (opcode == OpCode::Id::DP3 ||
+                                                 opcode == OpCode::Id::DP4);
 
                     if (is_dot_product) {
-                        int expected_input_length = (shinst.opcode == Instruction::OpCode::DP3) ? 3 : 4;
+                        int expected_input_length = (opcode == OpCode::Id::DP3) ? 3 : 4;
                         if (input_mask_src1.num_components != expected_input_length ||
                             input_mask_src2.num_components != expected_input_length)
                             throw "Input registers for dot product instructions need to use proper number of components";
