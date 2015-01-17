@@ -154,7 +154,7 @@ public:
     }
 
     __forceinline void Assign(const T& value) {
-        storage = (storage & ~GetMask()) | (((StorageType)value << position) & GetMask());
+        storage = (storage & ~GetMask()) | ((((StorageType)value) << position) & GetMask());
     }
 
     __forceinline typename std::add_const<T>::type Value() const

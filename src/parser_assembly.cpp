@@ -115,7 +115,7 @@ struct AssemblySkipper : public qi::grammar<Iterator> {
 
 std::ostream& operator<<(std::ostream& os, const OpCode& opcode) {
     // TODO: Should print actual opcode here..
-    return os << static_cast<uint32_t>(opcode);
+    return os << static_cast<uint32_t>(static_cast<OpCode::Id>(opcode));
 }
 
 template<typename Iterator>
