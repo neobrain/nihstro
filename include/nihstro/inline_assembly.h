@@ -264,15 +264,13 @@ struct InlineAsm {
               SourceRegister src2,
               SourceRegister src3, const SwizzleMask& swizzle_src3 = "") : InlineAsm(opcode, dest, "", src1, "", src2, "", src3, swizzle_src3) {}
 
-    // TODO: Change to a union once MSVC supports unrestricted unions!
+    // TODO: Group this into a union once MSVC supports unrestricted unions!
     struct {
-        struct {
-            Instruction instr;
-            SwizzlePattern swizzle;
-        } full_instruction;
+        Instruction instr;
+        SwizzlePattern swizzle;
+    } full_instruction;
 
-        std::string name;
-    };
+    std::string name;
 
     static size_t FindSwizzlePattern(const SwizzlePattern& pattern, std::vector<SwizzlePattern>& swizzle_table) {
         auto it = std::find_if(swizzle_table.begin(), swizzle_table.end(), [&](const SwizzlePattern& candidate) { return candidate.hex == pattern.hex; });
