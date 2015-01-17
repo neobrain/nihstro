@@ -363,18 +363,13 @@ struct OpCode {
         return static_cast<Id>(value);
     }
 
-    operator uint32_t() const {
-        return value;
+    OpCode operator << (size_t bits) const {
+        return value << bits;
     }
 
     template<typename T>
     decltype(uint32_t{} - T{}) operator -(const T& oth) const {
         return value - oth;
-    }
-
-    template<typename T>
-    decltype(uint32_t{} & T{}) operator &(const T& oth) const {
-        return value & oth;
     }
 
     uint32_t operator &(const OpCode& oth) const {
