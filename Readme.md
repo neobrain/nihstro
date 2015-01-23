@@ -35,6 +35,8 @@ The header `shader_bytecode.h` defines C++ data structures used in raw shader bi
 ### Inline assembler
 The header `inline_assembly.h` provides means for runtime generation of PICA200 shaders and SHBIN files within C++ code, so that homebrew authors don't need to ship shaders as precompiled files. While you could use nihstro's actual assembler to allow for runtime shader compilation, the inline assembler is more efficient and lighter on dependencies (since it doesn't require Boost to function).
 
+A simple [example program](examples/inline_assembler/simple) is included to illustrate how to use the inline assembler.
+
 ## Building
 All nihstro components require compiler support for C++11 to work.
 
