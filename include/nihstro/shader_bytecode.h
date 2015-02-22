@@ -225,21 +225,31 @@ struct OpCode {
         ADD     = 0x00,
         DP3     = 0x01,
         DP4     = 0x02,
+        DPH     = 0x03,   // Dot product of Vec4 and Vec3; the Vec3 is made into
+                          // a Vec4 by appending 1.0 as the fourth component
 
+        EX2     = 0x05,   // Base-2 exponential
+        LG2     = 0x06,   // Base-2 logarithm
         MUL     = 0x08,
-
+        SGE     = 0x09,   // Set to 1.0 if SRC1 is greater or equal to SRC2
+        SLT     = 0x0A,   // Set to 1.0 if SRC1 is less than SRC2
+        FLR     = 0x0B,
         MAX     = 0x0C,
         MIN     = 0x0D,
-        RCP     = 0x0E,
-        RSQ     = 0x0F,
+        RCP     = 0x0E,   // Reciprocal
+        RSQ     = 0x0F,   // Reciprocal of square root
 
         MOVA    = 0x12,   // Move to Address Register
         MOV     = 0x13,
 
+        DPHI    = 0x18,
+
+        SGEI    = 0x1A,
+        SLTI    = 0x1B,
+
         NOP     = 0x21,
         END     = 0x22,
         BREAKC  = 0x23,
-
         CALL    = 0x24,
         CALLC   = 0x25,
         CALLU   = 0x26,
@@ -355,15 +365,24 @@ struct OpCode {
         case Id::ADD:     return { Type::Arithmetic,         Info::TwoArguments,        "add" };
         case Id::DP3:     return { Type::Arithmetic,         Info::TwoArguments,        "dp3" };
         case Id::DP4:     return { Type::Arithmetic,         Info::TwoArguments,        "dp4" };
+        case Id::DPH:     return { Type::Arithmetic,         Info::TwoArguments,        "dph" };
+        case Id::EX2:     return { Type::Arithmetic,         Info::OneArgument,         "ex2" };
+        case Id::LG2:     return { Type::Arithmetic,         Info::OneArgument,         "lg2" };
         case Id::MUL:     return { Type::Arithmetic,         Info::TwoArguments,        "mul" };
+        case Id::SGE:     return { Type::Arithmetic,         Info::TwoArguments,        "sge" };
+        case Id::SLT:     return { Type::Arithmetic,         Info::TwoArguments,        "slt" };
+        case Id::FLR:     return { Type::Arithmetic,         Info::OneArgument,         "flr" };
         case Id::MAX:     return { Type::Arithmetic,         Info::TwoArguments,        "max" };
         case Id::MIN:     return { Type::Arithmetic,         Info::TwoArguments,        "min" };
         case Id::RCP:     return { Type::Arithmetic,         Info::OneArgument,         "rcp" };
         case Id::RSQ:     return { Type::Arithmetic,         Info::OneArgument,         "rsq" };
         case Id::MOVA:    return { Type::Arithmetic,         Info::MOVA,                "mova" };
         case Id::MOV:     return { Type::Arithmetic,         Info::OneArgument,         "mov" };
-        case Id::NOP:     return { Type::Trivial,            0,                               "nop" };
-        case Id::END:     return { Type::Trivial,            0,                               "end" };
+        case Id::DPHI:    return { Type::Arithmetic,         Info::TwoArguments | Info::SrcInversed, "dphi" };
+        case Id::SGEI:    return { Type::Arithmetic,         Info::TwoArguments | Info::SrcInversed, "sgei" };
+        case Id::SLTI:    return { Type::Arithmetic,         Info::TwoArguments | Info::SrcInversed, "slti" };
+        case Id::NOP:     return { Type::Trivial,            0,                         "nop" };
+        case Id::END:     return { Type::Trivial,            0,                         "end" };
         case Id::BREAKC:  return { Type::Conditional,        Info::BREAKC,              "breakc" };
         case Id::CALL:    return { Type::Conditional,        Info::CALL,                "call" };
         case Id::CALLC:   return { Type::Conditional,        Info::CALLC,               "callc" };
@@ -371,13 +390,13 @@ struct OpCode {
         case Id::IFU:     return { Type::UniformFlowControl, Info::IFU,                 "ifu" };
         case Id::IFC:     return { Type::Conditional,        Info::IFC,                 "ifc" };
         case Id::LOOP:    return { Type::UniformFlowControl, Info::LOOP,                "loop" };
-        case Id::EMIT:    return { Type::Trivial,            0,                               "emit" };
-        case Id::SETEMIT: return { Type::SetEmit,            0,                               "setemit" };
+        case Id::EMIT:    return { Type::Trivial,            0,                         "emit" };
+        case Id::SETEMIT: return { Type::SetEmit,            0,                         "setemit" };
         case Id::JMPC:    return { Type::Conditional,        Info::JMPC,                "jmpc" };
         case Id::JMPU:    return { Type::Conditional,        Info::JMPU,                "jmpu" };
         case Id::CMP:     return { Type::Arithmetic,         Info::Compare,             "cmp" };
-        case Id::MADI:    return { Type::MultiplyAdd,        0,                               "madi" };
-        case Id::MAD:     return { Type::MultiplyAdd,        0,                               "mad" };
+        case Id::MADI:    return { Type::MultiplyAdd,        Info::SrcInversed,         "madi" };
+        case Id::MAD:     return { Type::MultiplyAdd,        0,                         "mad" };
 
         default:
             return { Type::Unknown, 0, "UNK" };
