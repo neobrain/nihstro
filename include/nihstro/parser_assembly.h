@@ -176,6 +176,7 @@ struct StatementInstruction : boost::fusion::vector<OpCode, std::vector<Expressi
         return boost::fusion::at_c<1>(*this);
     }
 };
+using FloatOpInstruction = StatementInstruction;
 
 using DeclarationConstant = boost::fusion::vector<std::string, Identifier, std::vector<float>>;
 using DeclarationOutput   = boost::fusion::vector<std::string, Identifier, OutputRegisterInfo::Type>;
@@ -199,7 +200,7 @@ struct Parser {
 
     bool ParseLabel(Iterator& begin, Iterator end, StatementLabel* label);
 
-    bool ParseInstruction(Iterator& begin, Iterator end, StatementInstruction* instruction);
+    bool ParseFloatOp(Iterator& begin, Iterator end, FloatOpInstruction* content);
 
     bool ParseDeclaration(Iterator& begin, Iterator end, StatementDeclaration* declaration);
 

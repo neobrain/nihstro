@@ -216,7 +216,7 @@ int main(int argc, char* argv[])
     while (true) {
         Parser parser(context);
         StatementLabel statement_label;
-        StatementInstruction statement_instruction;
+        FloatOpInstruction statement_instruction;
         StatementDeclaration statement_declaration;
 
         // First off, move iterator past preceding comments, blanks, etc
@@ -236,7 +236,7 @@ int main(int argc, char* argv[])
 
             CustomLabelInfo label_info = { program_write_offset, symbol_table_index };
             label_table.push_back(label_info);
-        } else if (parser.ParseInstruction(begin, input_code.end(), &statement_instruction)) {
+        } else if (parser.ParseFloatOp(begin, input_code.end(), &statement_instruction)) {
             auto& instr = statement_instruction;
 
             Instruction shinst;
@@ -298,8 +298,6 @@ int main(int argc, char* argv[])
                 case OpCode::Type::Arithmetic:
                 {
                     const int num_inputs = opcode.GetInfo().NumArguments() - 1;
-                    if (num_args != num_inputs + 1)
-                        throw "Incorrect number of arguments. Expected " + std::to_string(num_inputs + 1) + ", got " + std::to_string(num_args);
 
                     auto AssertRegisterReadable = [](RegisterType type) {
                         if (type != RegisterType::Input && type != RegisterType::Temporary &&
