@@ -103,10 +103,10 @@ template<typename Iterator>
 struct AssemblySkipper : public qi::grammar<Iterator> {
 
     AssemblySkipper() : AssemblySkipper::base_type(skip) {
+        // TODO: Should not consume eol..
+        comments = qi::char_("//") >> *(qi::char_ - qi::eol); // >> qi::eol;
 
-        comments = qi::char_("//") >> *(qi::char_ - qi::eol) >> qi::eol;
-
-        skip = +(comments | ascii::space);
+        skip = +(comments | ascii::blank);
     }
 
     qi::rule<Iterator> comments;
@@ -204,11 +204,11 @@ private:
 };
 
 template<typename Iterator>
-struct InstructionParser : qi::grammar<Iterator, StatementInstruction(), AssemblySkipper<Iterator>> {
+struct FloatOpParser : qi::grammar<Iterator, StatementInstruction(), AssemblySkipper<Iterator>> {
     using Skipper = AssemblySkipper<Iterator>;
 
-    InstructionParser(const ParserContext& context)
-                : InstructionParser::base_type(instruction),
+    FloatOpParser(const ParserContext& context)
+                : FloatOpParser::base_type(instruction),
                   common(context),
                   known_identifier(common.known_identifier),
                   identifier(common.identifier),
@@ -217,91 +217,82 @@ struct InstructionParser : qi::grammar<Iterator, StatementInstruction(), Assembl
 
         // Setup symbol table
         opcodes[0].add
-                   ( "nop",   OpCode::Id::NOP   )
-                   ( "end",   OpCode::Id::END );
-        opcodes[1].add
-                   ( "mova",  OpCode::Id::MOVA  )
-                   ( "call",  OpCode::Id::CALL  );
+                   ( "mova",  OpCode::Id::MOVA  );
 
-        opcodes[2].add
+        opcodes[1].add
                    ( "mov",   OpCode::Id::MOV   )
                    ( "rcp",   OpCode::Id::RCP   )
                    ( "rsq",   OpCode::Id::RSQ   );
-        opcodes[3].add
+        opcodes[2].add
                    ( "add",   OpCode::Id::ADD   )
-                   ( "mul",   OpCode::Id::MUL   )
                    ( "dp3",   OpCode::Id::DP3   )
                    ( "dp4",   OpCode::Id::DP4   )
+                   ( "mul",   OpCode::Id::MUL   )
                    ( "max",   OpCode::Id::MAX   )
                    ( "min",   OpCode::Id::MIN   );
-        opcodes[4].add
-                   ( "cmp",   OpCode::Id::CMP   );
+        opcodes[3].add
+                   ( "mad",   OpCode::Id::MAD   );
 
         // Setup rules
 
         auto comma_rule = qi::lit(',');
 
-        opcode[0] = qi::no_case[qi::lexeme[opcodes[0]]];
-        for (int i = 1; i < 5; ++i) {
+        for (int i = 0; i < 4; ++i) {
             // Make sure that a mnemonic is always followed by a space if it expects an argument
             opcode[i] = qi::no_case[qi::lexeme[opcodes[i] >> qi::omit[ascii::blank]]];
         }
 
-        expression_chain[1] = expression;
-		for (int i = 2; i < 5; ++i) {
+        // chain of arguments for each group of opcodes
+        expression_chain[0] = expression;
+		for (int i = 1; i < 4; ++i) {
             expression_chain[i] = expression_chain[i - 1] >> comma_rule > expression;
         }
 
         // e.g. "add o1, t2, t5"
-        not_comma = !comma_rule;
-        instr[0] = opcode[0] > not_comma;
-        instr[1] = opcode[1] > expression_chain[1] > not_comma;
-        instr[2] = opcode[2] > expression_chain[2] > not_comma;
-        instr[3] = opcode[3] > expression_chain[3] > not_comma;
-        instr[4] = opcode[4] > expression_chain[4] > not_comma;
+        // TODO: Should also recognize EOL and EOF as end of instruction
+        instr[0] = opcode[0] > expression_chain[0];
+        instr[1] = opcode[1] > expression_chain[1];
+        instr[2] = opcode[2] > expression_chain[2];
+        instr[3] = opcode[3] > expression_chain[3];
 
-        // TODO: Expect a newline at the end of things...
-        instruction %= instr[0] | instr[1] | instr[2] | instr[3] | instr[4];
+        instruction %= instr[0] | instr[1] | instr[2] | instr[3];
 
         // Error handling
-        BOOST_SPIRIT_DEBUG_NODE(not_comma);
-
+        BOOST_SPIRIT_DEBUG_NODE(expression_chain[0]);
         BOOST_SPIRIT_DEBUG_NODE(expression_chain[1]);
         BOOST_SPIRIT_DEBUG_NODE(expression_chain[2]);
         BOOST_SPIRIT_DEBUG_NODE(expression_chain[3]);
-        BOOST_SPIRIT_DEBUG_NODE(expression_chain[4]);
 
         BOOST_SPIRIT_DEBUG_NODE(instr[0]);
         BOOST_SPIRIT_DEBUG_NODE(instr[1]);
         BOOST_SPIRIT_DEBUG_NODE(instr[2]);
         BOOST_SPIRIT_DEBUG_NODE(instr[3]);
-        BOOST_SPIRIT_DEBUG_NODE(instr[4]);
         BOOST_SPIRIT_DEBUG_NODE(instruction);
 
-        diagnostics.Add(expression_chain[1].name(), "one argument");
-        diagnostics.Add(expression_chain[2].name(), "two arguments");
-        diagnostics.Add(expression_chain[3].name(), "three arguments");
-        diagnostics.Add(expression_chain[4].name(), "four arguments");
+        diagnostics.Add(expression_chain[0].name(), "one argument");
+        diagnostics.Add(expression_chain[1].name(), "two arguments");
+        diagnostics.Add(expression_chain[2].name(), "three arguments");
+        diagnostics.Add(expression_chain[3].name(), "four arguments");
 
         qi::on_error<qi::fail>(instruction, error_handler(phoenix::ref(diagnostics), _1, _2, _3, _4));
     }
 
     CommonRules<Iterator> common;
 
-    qi::symbols<char, OpCode>                     opcodes[5]; // indexed by number of arguments
+    qi::symbols<char, OpCode>                     opcodes[4]; // indexed by number of arguments
 
     // Rule-ified symbols, which can be assigned names
     qi::rule<Iterator, Identifier(),              Skipper>& known_identifier;
-    qi::rule<Iterator, OpCode(),                  Skipper> opcode[5];
+    qi::rule<Iterator, OpCode(),                  Skipper> opcode[4];
 
     // Building blocks
     qi::rule<Iterator, std::string(),             Skipper>& identifier;
     qi::rule<Iterator, Expression(),              Skipper>& expression;
-    qi::rule<Iterator, std::vector<Expression>(), Skipper> expression_chain[5]; // sequence of instruction arguments
+    qi::rule<Iterator, std::vector<Expression>(), Skipper> expression_chain[4]; // sequence of instruction arguments
 
     // Compounds
-    qi::rule<Iterator, StatementInstruction(),    Skipper> instr[5];
-    qi::rule<Iterator, StatementInstruction(),    Skipper> instruction;
+    qi::rule<Iterator, FloatOpInstruction(),    Skipper> instr[4];
+    qi::rule<Iterator, FloatOpInstruction(),    Skipper> instruction;
 
     // Utility
     qi::rule<Iterator,                            Skipper> not_comma;
@@ -393,7 +384,9 @@ struct Parser::ParserImpl {
     }
 
     void Skip(Iterator& begin, Iterator end) {
-        parse(begin, end, skipper);
+        do {
+            parse(begin, end, skipper);
+        } while (boost::spirit::qi::parse(begin, end, boost::spirit::qi::eol));
     }
 
     bool ParseLabel(Iterator& begin, Iterator end, StatementLabel* content) {
@@ -402,7 +395,7 @@ struct Parser::ParserImpl {
         return phrase_parse(begin, end, label, skipper, *content);
     }
 
-    bool ParseInstruction(Iterator& begin, Iterator end, StatementInstruction* content) {
+    bool ParseFloatOp(Iterator& begin, Iterator end, FloatOpInstruction* content) {
         assert(content != nullptr);
 
         return phrase_parse(begin, end, instruction, skipper, *content);
@@ -418,7 +411,7 @@ private:
     AssemblySkipper<Iterator>   skipper;
 
     LabelParser<Iterator>       label;
-    InstructionParser<Iterator> instruction;
+    FloatOpParser<Iterator>     instruction;
     DeclarationParser<Iterator> declaration;
 };
 
@@ -438,8 +431,8 @@ bool Parser::ParseLabel(Iterator& begin, Iterator end, StatementLabel* label) {
     return impl->ParseLabel(begin, end, label);
 }
 
-bool Parser::ParseInstruction(Iterator& begin, Iterator end, StatementInstruction* instruction) {
-    return impl->ParseInstruction(begin, end, instruction);
+bool Parser::ParseFloatOp(Iterator& begin, Iterator end, FloatOpInstruction* instruction) {
+    return impl->ParseFloatOp(begin, end, instruction);
 }
 
 bool Parser::ParseDeclaration(Iterator& begin, Iterator end, StatementDeclaration* declaration) {

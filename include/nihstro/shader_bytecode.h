@@ -325,11 +325,12 @@ struct OpCode {
 
         const char* name;
 
+        // TODO: Deprecate.
         size_t NumArguments() const {
             if (type == Type::Arithmetic) {
-                if (subtype & TwoArguments)
+                if (subtype & Src2)
                     return 3;
-                else if (subtype & OneArgument)
+                else if (subtype & Src1)
                     return 2;
             }
 
