@@ -169,6 +169,9 @@ struct ConstantInfo {
 };
 
 struct LabelInfo {
+    LabelInfo() = default;
+    LabelInfo(const LabelInfo&) = default;
+
     BitField<0, 8, uint32_t> id;
     uint32_t program_offset;
     uint32_t unk;
