@@ -293,8 +293,7 @@ struct Parser {
 
 private:
     struct ParserImpl;
-//    std::unique_ptr<ParserImpl> impl;
-    ParserImpl* impl;
+    std::unique_ptr<ParserImpl> impl;
 };
 
 } // namespace

@@ -588,12 +588,10 @@ private:
     DeclarationParser<Iterator> declaration;
 };
 
-Parser::Parser(const ParserContext& context) {
-    impl = new ParserImpl(context);
+Parser::Parser(const ParserContext& context) : impl(new ParserImpl(context)) {
 };
 
 Parser::~Parser() {
-    delete impl;
 }
 
 void Parser::Skip(Iterator& begin, Iterator end) {
