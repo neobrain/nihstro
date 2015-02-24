@@ -264,21 +264,27 @@ struct FloatOpParser : qi::grammar<Iterator, FloatOpInstruction(), AssemblySkipp
 
         // Setup symbol table
         opcodes[0].add
-                   ( "mova",  OpCode::Id::MOVA  );
+                   ( "mova",  OpCode::Id::MOVA    );
 
         opcodes[1].add
-                   ( "mov",   OpCode::Id::MOV   )
-                   ( "rcp",   OpCode::Id::RCP   )
-                   ( "rsq",   OpCode::Id::RSQ   );
+                   ( "ex2",   OpCode::Id::EX2     )
+                   ( "lg2",   OpCode::Id::LG2     )
+                   ( "flr",   OpCode::Id::FLR     )
+                   ( "rcp",   OpCode::Id::RCP     )
+                   ( "rsq",   OpCode::Id::RSQ     )
+                   ( "mov",   OpCode::Id::MOV     );
         opcodes[2].add
-                   ( "add",   OpCode::Id::ADD   )
-                   ( "dp3",   OpCode::Id::DP3   )
-                   ( "dp4",   OpCode::Id::DP4   )
-                   ( "mul",   OpCode::Id::MUL   )
-                   ( "max",   OpCode::Id::MAX   )
-                   ( "min",   OpCode::Id::MIN   );
+                   ( "add",   OpCode::Id::ADD     )
+                   ( "dp3",   OpCode::Id::DP3     )
+                   ( "dp4",   OpCode::Id::DP4     )
+                   ( "dph",   OpCode::Id::GEN_DPH )
+                   ( "mul",   OpCode::Id::MUL     )
+                   ( "sge",   OpCode::Id::GEN_SGE )
+                   ( "slt",   OpCode::Id::GEN_SLT )
+                   ( "max",   OpCode::Id::MAX     )
+                   ( "min",   OpCode::Id::MIN     );
         opcodes[3].add
-                   ( "mad",   OpCode::Id::MAD   );
+                   ( "mad",   OpCode::Id::GEN_MAD );
 
         // Setup rules
 

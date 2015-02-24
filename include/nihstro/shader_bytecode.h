@@ -236,6 +236,7 @@ struct OpCode {
 
         EX2     = 0x05,   // Base-2 exponential
         LG2     = 0x06,   // Base-2 logarithm
+
         MUL     = 0x08,
         SGE     = 0x09,   // Set to 1.0 if SRC1 is greater or equal to SRC2
         SLT     = 0x0A,   // Set to 1.0 if SRC1 is less than SRC2
@@ -273,13 +274,19 @@ struct OpCode {
         MAD     = 0x38, // lower 3 opcode bits ignored
 
         // Pseudo-instructions, used internally by the assembler
-        GEN_IF  = 0x40, // Generic IF (IFC or IFU)
+        PSEUDO_INSTRUCTION_START = 0x40,
+
+        GEN_IF = PSEUDO_INSTRUCTION_START, // Generic IF (IFC or IFU)
         ELSE,
         ENDIF,
         GEN_CALL,       // Generic CALL (CALL, CALC, or CALLU)
         GEN_JMP,        // Generic JMP (JMPC or JMPU)
         //RET,          // Return from function (not supported yet)
-        ENDLOOP
+        ENDLOOP,
+        GEN_MAD,        // MAD or MADI
+        GEN_SGE,        // SGE or SGEI
+        GEN_SLT,        // SLT or SLTI
+        GEN_DPH,        // DPH or DPHI
     };
 
     enum class Type {
