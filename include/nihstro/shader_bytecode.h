@@ -283,10 +283,6 @@ struct OpCode {
         GEN_JMP,        // Generic JMP (JMPC or JMPU)
         //RET,          // Return from function (not supported yet)
         ENDLOOP,
-        GEN_MAD,        // MAD or MADI
-        GEN_SGE,        // SGE or SGEI
-        GEN_SLT,        // SLT or SLTI
-        GEN_DPH,        // DPH or DPHI
     };
 
     enum class Type {
@@ -511,12 +507,14 @@ union Instruction {
             }
         }
 
+        /**
+         * Source inputs may be reordered for certain instructions.
+         * Use GetSrc1 and GetSrc2 instead to access the input register indices hence.
+         */
         BitField<0x07, 0x5, SourceRegister> src2;
         BitField<0x0c, 0x7, SourceRegister> src1;
-
-        // TODO: 1c and 1i use different layouts for this...
-        BitField<0x07, 0x7, SourceRegister> src1i;
-        BitField<0x0e, 0x5, SourceRegister> src2i;
+        BitField<0x07, 0x7, SourceRegister> src2i;
+        BitField<0x0e, 0x5, SourceRegister> src1i;
 
         // Address register value is used for relative addressing of src1
         BitField<0x13, 0x2, uint32_t> address_register_index;

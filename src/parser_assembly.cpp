@@ -277,14 +277,14 @@ struct FloatOpParser : qi::grammar<Iterator, FloatOpInstruction(), AssemblySkipp
                    ( "add",   OpCode::Id::ADD     )
                    ( "dp3",   OpCode::Id::DP3     )
                    ( "dp4",   OpCode::Id::DP4     )
-                   ( "dph",   OpCode::Id::GEN_DPH )
+                   ( "dph",   OpCode::Id::DPH     )
                    ( "mul",   OpCode::Id::MUL     )
-                   ( "sge",   OpCode::Id::GEN_SGE )
-                   ( "slt",   OpCode::Id::GEN_SLT )
+                   ( "sge",   OpCode::Id::SGE     )
+                   ( "slt",   OpCode::Id::SLT     )
                    ( "max",   OpCode::Id::MAX     )
                    ( "min",   OpCode::Id::MIN     );
         opcodes[3].add
-                   ( "mad",   OpCode::Id::GEN_MAD );
+                   ( "mad",   OpCode::Id::MAD     );
 
         // Setup rules
 
