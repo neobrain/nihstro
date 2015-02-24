@@ -43,17 +43,19 @@ enum class RegisterType {
     Temporary,
     FloatUniform,
     Address,
+    ConditionalCode,
     Unknown
 };
 
 static std::string GetRegisterName(RegisterType type) {
     switch (type) {
-    case RegisterType::Input:        return "v";
-    case RegisterType::Output:       return "o";
-    case RegisterType::Temporary:    return "r";
-    case RegisterType::FloatUniform: return "c";
-    case RegisterType::Unknown:      return "u";
-    default:                         return "";
+    case RegisterType::Input:           return "v";
+    case RegisterType::Output:          return "o";
+    case RegisterType::Temporary:       return "r";
+    case RegisterType::FloatUniform:    return "c";
+    case RegisterType::ConditionalCode: return "cc";
+    case RegisterType::Unknown:         return "u";
+    default:                            return "";
     }
 }
 
@@ -172,7 +174,7 @@ struct DestRegister {
             reg.value = index;
         else if (type == RegisterType::Temporary)
             reg.value = index + 0x10;
-        else if (type == RegisterType::FloatUniform)
+        else if (type == RegisterType::FloatUniform) // TODO: Wait what? These shouldn't be writable..
             reg.value = index + 0x20;
         else {
             // TODO: Should throw an exception or something.
@@ -265,6 +267,15 @@ struct OpCode {
         // lower 3 opcode bits ignored for these
         MADI    = 0x30,
         MAD     = 0x38, // lower 3 opcode bits ignored
+
+        // Pseudo-instructions, used internally by the assembler
+        GEN_IF      = 0x40, // Generic IF (IFC or IFU)
+        ELSE        = 0x41,
+        ENDIF       = 0x42,
+        GEN_CALL    = 0x43, // Generic CALL (CALL, CALC, or CALLU)
+        GEN_JMP     = 0x44, // Generic JMP (JMPC or JMPU)
+        RET         = 0x45, // Return from function
+        ENDLOOP     = 0x46
     };
 
     enum class Type {
@@ -470,7 +481,7 @@ union Instruction {
 
 
     // Format used e.g. by arithmetic instructions and comparisons
-    union {
+    union Common { // TODO: Remove name
         BitField<0x00, 0x7, uint32_t> operand_desc_id;
 
         const SourceRegister GetSrc1(bool is_inverted) const {

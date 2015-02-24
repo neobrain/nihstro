@@ -25,6 +25,7 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#include <boost/optional.hpp>
 #include <array>
 #include <vector>
 #include <ostream>
@@ -159,12 +160,33 @@ private:
     }
 };
 
+struct Condition : boost::fusion::vector<bool, Identifier, boost::optional<InputSwizzlerMask>> {
+    Condition() = default;
+
+    bool GetInvertFlag() const {
+        return boost::fusion::at_c<0>(*this);
+    }
+
+    const Identifier& GetIdentifier() const {
+        return boost::fusion::at_c<1>(*this);
+    }
+
+    bool HasSwizzleMask() const {
+        return boost::fusion::at_c<2>(*this);
+    }
+
+    const InputSwizzlerMask& GetSwizzleMask() const {
+        return *boost::fusion::at_c<2>(*this);
+    }
+};
+
 using StatementLabel = std::string;
 
 // TODO: Figure out why this cannot be a std::tuple...
 struct StatementInstruction : boost::fusion::vector<OpCode, std::vector<Expression>> {
     StatementInstruction() = default;
 
+    // TODO: Obsolete constructor?
     StatementInstruction(const OpCode& opcode) : boost::fusion::vector<OpCode, std::vector<Expression>>(opcode, std::vector<Expression>()) {
     }
 
@@ -177,6 +199,65 @@ struct StatementInstruction : boost::fusion::vector<OpCode, std::vector<Expressi
     }
 };
 using FloatOpInstruction = StatementInstruction;
+
+struct CompareInstruction : boost::fusion::vector<OpCode, std::vector<Expression>, std::vector<Instruction::Common::CompareOpType::Op>> {
+    CompareInstruction() = default;
+
+    const OpCode& GetOpCode() const {
+        return boost::fusion::at_c<0>(*this);
+    }
+
+    const Expression& GetSrc1() const {
+        return boost::fusion::at_c<1>(*this)[0];
+    }
+
+    const Expression& GetSrc2() const {
+        return boost::fusion::at_c<1>(*this)[1];
+    }
+
+    Instruction::Common::CompareOpType::Op GetOp1() const {
+        return boost::fusion::at_c<2>(*this)[0];
+    }
+
+    Instruction::Common::CompareOpType::Op GetOp2() const {
+        return boost::fusion::at_c<2>(*this)[1];
+    }
+};
+
+struct FlowControlInstruction : boost::fusion::vector<OpCode,
+                                                      std::string /*target_label*/,
+                                                      boost::optional<std::string> /*return_label*/,
+                                                      boost::optional<Condition>> {
+    using ParentType = boost::fusion::vector<OpCode, std::string, boost::optional<std::string>, boost::optional<Condition>>;
+
+    FlowControlInstruction() = default;
+
+    FlowControlInstruction(const ParentType& obj) : boost::fusion::vector<OpCode, std::string, boost::optional<std::string>, boost::optional<Condition>>(obj) {};
+    const OpCode& GetOpCode() const {
+        return boost::fusion::at_c<0>(*this);
+    }
+
+    const std::string& GetTargetLabel() const {
+        return boost::fusion::at_c<1>(*this);
+    }
+
+    bool HasReturnLabel() const {
+        return boost::fusion::at_c<2>(*this);
+    }
+
+    const std::string& GetReturnLabel() const {
+        return *boost::fusion::at_c<2>(*this);
+    }
+
+    bool HasCondition() const {
+        return boost::fusion::at_c<3>(*this);
+    }
+
+    const Condition& GetCondition() const {
+        return *boost::fusion::at_c<3>(*this);
+    }
+
+};
 
 using DeclarationConstant = boost::fusion::vector<std::string, Identifier, std::vector<float>>;
 using DeclarationOutput   = boost::fusion::vector<std::string, Identifier, OutputRegisterInfo::Type>;
@@ -198,11 +279,17 @@ struct Parser {
 
     void Skip(Iterator& begin, Iterator end);
 
+    bool ParseDeclaration(Iterator& begin, Iterator end, StatementDeclaration* declaration);
+
     bool ParseLabel(Iterator& begin, Iterator end, StatementLabel* label);
+
+    bool ParseSimpleInstruction(Iterator& begin, Iterator end, OpCode* opcode);
 
     bool ParseFloatOp(Iterator& begin, Iterator end, FloatOpInstruction* content);
 
-    bool ParseDeclaration(Iterator& begin, Iterator end, StatementDeclaration* declaration);
+    bool ParseCompare(Iterator& begin, Iterator end, CompareInstruction* content);
+
+    bool ParseFlowControl(Iterator& begin, Iterator end, FlowControlInstruction* content);
 
 private:
     struct ParserImpl;

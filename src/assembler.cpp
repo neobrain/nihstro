@@ -30,6 +30,9 @@
 #include <sstream>
 #include <fstream>
 
+#include <boost/range/adaptor/sliced.hpp>
+#include <boost/range/algorithm/count_if.hpp>
+
 #include "nihstro/parser_assembly.h"
 
 #include "nihstro/shader_binary.h"
@@ -38,14 +41,15 @@
 using namespace nihstro;
 
 enum class RegisterSpace : int {
-    Input        = 0,
-    Temporary    = 0x10,
-    FloatUniform = 0x20,
-    Output       = 0x80,
-    Address      = 0x90,
-    AddressEnd   = 0x92,
+    Input           = 0,
+    Temporary       = 0x10,
+    FloatUniform    = 0x20,
+    Output          = 0x80,
+    Address         = 0x90,
+    AddressEnd      = 0x92,
+    ConditionalCode = 0x93,
 
-    Max          = 0x92,
+    Max             = ConditionalCode,
 };
 
 // Smallest unit an expression evaluates to:
@@ -58,7 +62,9 @@ struct Atomic {
     int relative_address_source;
 
     const RegisterType GetType() const {
-        if (register_index >= (int)RegisterSpace::Address)
+        if (register_index >= (int)RegisterSpace::ConditionalCode)
+            return RegisterType::ConditionalCode;
+        else if (register_index >= (int)RegisterSpace::Address)
             return RegisterType::Address;
         else if (register_index >= (int)RegisterSpace::Output)
             return RegisterType::Output;
@@ -71,7 +77,9 @@ struct Atomic {
     }
 
     int GetIndex() const {
-        if (register_index >= (int)RegisterSpace::Address)
+        if (register_index >= (int)RegisterSpace::ConditionalCode)
+            return register_index - (int)RegisterSpace::ConditionalCode;
+        else if (register_index >= (int)RegisterSpace::Address)
             return register_index - (int)RegisterSpace::Address;
         else if (register_index >= (int)RegisterSpace::Output)
             return register_index - (int)RegisterSpace::Output;
@@ -138,6 +146,119 @@ struct SourceSwizzlerMask {
     Component components[4];
 };
 
+// Evaluate expression to a particular Atomic
+Atomic EvaluateExpression(const Expression& expr) {
+    Atomic ret = identifiers[expr.GetIdentifier()];
+
+    ret.negate = expr.GetSign() == -1;
+    ret.relative_address_source = 0;
+
+    bool relative_address_set = false;
+    if (expr.HasIndexExpression()) {
+        const auto& array_index_expression = expr.GetIndexExpression();
+        int index = 0;
+        for (int i = 0; i < array_index_expression.GetCount(); ++i) {
+            if (array_index_expression.IsRawIndex(i)) {
+                index += array_index_expression.GetRawIndex(i);
+            } else if (array_index_expression.IsAddressRegisterIdentifier(i)) {
+                if (relative_address_set) {
+                    throw "May not use more than one register in relative addressing";
+                }
+
+                // TODO: Make sure the referenced identifier is not completely bogus
+                ret.relative_address_source = identifiers[array_index_expression.GetAddressRegisterIdentifier(i)].register_index;
+                if (ret.relative_address_source < (int)RegisterSpace::Address ||
+                    ret.relative_address_source > (int)RegisterSpace::AddressEnd) {
+                    throw "Invalid register " + std::to_string(array_index_expression.GetAddressRegisterIdentifier(i))+ " " + std::to_string(ret.relative_address_source) + " used for relative addressing (only a0, a1 and lcnt are valid indexes)";
+                }
+                ret.relative_address_source -= (int)RegisterSpace::Address;
+                relative_address_set = true;
+            }
+        }
+        ret.register_index += index;
+    }
+    // Apply swizzle mask(s)
+    for (const auto& swizzle_mask : expr.GetSwizzleMasks()) {
+        // TODO: Error out if the swizzle masks can't actually be merged..
+
+        InputSwizzlerMask out;
+        out.num_components = swizzle_mask.num_components;
+        for (int comp = 0; comp < swizzle_mask.num_components; ++comp) {
+            out.components[comp] = ret.mask.components[swizzle_mask.components[comp]];
+        }
+        ret.mask = out;
+    }
+    return ret;
+};
+
+// TODO: Provide optimized versions for functions without src2
+// TODO: Support src3 inputs
+size_t FindOrAddSwizzlePattern(std::vector<SwizzlePattern>& swizzle_patterns,
+                               const DestSwizzlerMask& dest_mask,
+                               const SourceSwizzlerMask& mask_src1,
+                               const SourceSwizzlerMask& mask_src2,
+                               bool negate_src1, bool negate_src2) {
+    SwizzlePattern swizzle_pattern;
+    swizzle_pattern.hex = 0;
+
+    for (int i = 0, active_component = 0; i < 4; ++i) {
+        if (dest_mask.component_set[i])
+            swizzle_pattern.SetDestComponentEnabled(i, true);
+
+        if (mask_src1.components[i] != SourceSwizzlerMask::Unspecified)
+            swizzle_pattern.SetSelectorSrc1(i, static_cast<SwizzlePattern::Selector>(mask_src1.components[i]));
+
+        if (mask_src2.components[i] != SourceSwizzlerMask::Unspecified)
+            swizzle_pattern.SetSelectorSrc2(i, static_cast<SwizzlePattern::Selector>(mask_src2.components[i]));
+    }
+
+    swizzle_pattern.negate_src1 = negate_src1;
+    swizzle_pattern.negate_src2 = negate_src2;
+
+    auto it = std::find_if(swizzle_patterns.begin(), swizzle_patterns.end(),
+                            [&swizzle_pattern](const SwizzlePattern& val) { return val.hex == swizzle_pattern.hex; });
+    if (it == swizzle_patterns.end()) {
+        swizzle_patterns.push_back(swizzle_pattern);
+        it = swizzle_patterns.end() - 1;
+
+        if (swizzle_patterns.size() > 127)
+            throw "Limit of 127 swizzle patterns has been exhausted";
+    }
+
+    return it - swizzle_patterns.begin();
+};
+
+size_t FindOrAddSwizzlePattern(std::vector<SwizzlePattern>& swizzle_patterns,
+                               const SourceSwizzlerMask& mask_src1,
+                               const SourceSwizzlerMask& mask_src2,
+                               bool negate_src1, bool negate_src2) {
+    SwizzlePattern swizzle_pattern;
+    swizzle_pattern.hex = 0;
+
+    for (int i = 0, active_component = 0; i < 4; ++i) {
+        if (mask_src1.components[i] != SourceSwizzlerMask::Unspecified)
+            swizzle_pattern.SetSelectorSrc1(i, static_cast<SwizzlePattern::Selector>(mask_src1.components[i]));
+
+        if (mask_src2.components[i] != SourceSwizzlerMask::Unspecified)
+            swizzle_pattern.SetSelectorSrc2(i, static_cast<SwizzlePattern::Selector>(mask_src2.components[i]));
+    }
+
+    swizzle_pattern.negate_src1 = negate_src1;
+    swizzle_pattern.negate_src2 = negate_src2;
+
+    auto it = std::find_if(swizzle_patterns.begin(), swizzle_patterns.end(),
+                            [&swizzle_pattern](const SwizzlePattern& val) { return val.hex == swizzle_pattern.hex; });
+    if (it == swizzle_patterns.end()) {
+        swizzle_patterns.push_back(swizzle_pattern);
+        it = swizzle_patterns.end() - 1;
+
+        if (swizzle_patterns.size() > 127)
+            throw "Limit of 127 swizzle patterns has been exhausted";
+    }
+
+    return it - swizzle_patterns.begin();
+};
+
 int main(int argc, char* argv[])
 {
     if (argc < 2) {
@@ -194,7 +315,9 @@ int main(int argc, char* argv[])
         identifiers.push_back({i, InputSwizzlerMask::FullMask()});
 
         std::string name;
-        if (i == (int)RegisterSpace::AddressEnd)
+        if (i == (int)RegisterSpace::ConditionalCode)
+            name = "cc";
+        else if (i == (int)RegisterSpace::AddressEnd)
             name = "lcnt";
         else if (i >= (int)RegisterSpace::Address)
             name = "a" + std::to_string(i - (int)RegisterSpace::Address);
@@ -217,10 +340,26 @@ int main(int argc, char* argv[])
         Parser parser(context);
         StatementLabel statement_label;
         FloatOpInstruction statement_instruction;
+        CompareInstruction compare_instruction;
+        FlowControlInstruction statement_flow_control;
         StatementDeclaration statement_declaration;
 
         // First off, move iterator past preceding comments, blanks, etc
         parser.Skip(begin, input_code.end());
+
+        auto AssertRegisterReadable = [](RegisterType type) {
+            if (type != RegisterType::Input && type != RegisterType::Temporary &&
+                type != RegisterType::FloatUniform)
+                throw "Specified register is not readable (only input, temporary and uniform registers are writeable)";
+        };
+        auto AssertRegisterWriteable = [](RegisterType type, int index) {
+            if (type != RegisterType::Output && type != RegisterType::Temporary)
+                throw "Specified register " + std::to_string((int)type) + " " + std::to_string(index) + " is not writeable (only output and temporary registers are writeable)";
+        };
+
+            static auto IsFloatInput = [](const Atomic& src) {
+                return src.GetType() == RegisterType::FloatUniform;
+            };
 
         // Now perform the actual parsing
         preparse_begin = begin;
@@ -245,50 +384,6 @@ int main(int argc, char* argv[])
             const std::vector<Expression>& args = instr.GetArguments();
             std::vector<Atomic> arguments;
             for (const auto& expr : args) {
-                auto EvaluateExpression = [](const Expression& expr) {
-                    Atomic ret = identifiers[expr.GetIdentifier()];
-
-                    ret.negate = expr.GetSign() == -1;
-                    ret.relative_address_source = 0;
-
-                    bool relative_address_set = false;
-                    if (expr.HasIndexExpression()) {
-                        const auto& array_index_expression = expr.GetIndexExpression();
-                        int index = 0;
-                        for (int i = 0; i < array_index_expression.GetCount(); ++i) {
-                            if (array_index_expression.IsRawIndex(i)) {
-                                index += array_index_expression.GetRawIndex(i);
-                            } else if (array_index_expression.IsAddressRegisterIdentifier(i)) {
-                                if (relative_address_set) {
-                                    throw "May not use more than one register in relative addressing";
-                                }
-
-                                // TODO: Make sure the referenced identifier is not completely bogus
-                                ret.relative_address_source = identifiers[array_index_expression.GetAddressRegisterIdentifier(i)].register_index;
-                                if (ret.relative_address_source < (int)RegisterSpace::Address ||
-                                    ret.relative_address_source > (int)RegisterSpace::AddressEnd) {
-                                    throw "Invalid register " + std::to_string(array_index_expression.GetAddressRegisterIdentifier(i))+ " " + std::to_string(ret.relative_address_source) + " used for relative addressing (only a0, a1 and lcnt are valid indexes)";
-                                }
-                                ret.relative_address_source -= (int)RegisterSpace::Address;
-                                relative_address_set = true;
-                            }
-                        }
-                        ret.register_index += index;
-                    }
-
-                    // Apply swizzle mask(s)
-                    for (const auto& swizzle_mask : expr.GetSwizzleMasks()) {
-                        // TODO: Error out if the swizzle masks can't actually be merged..
-
-                        InputSwizzlerMask out;
-                        out.num_components = swizzle_mask.num_components;
-                        for (int comp = 0; comp < swizzle_mask.num_components; ++comp) {
-                            out.components[comp] = ret.mask.components[swizzle_mask.components[comp]];
-                        }
-                        ret.mask = out;
-                    }
-                    return ret;
-                };
                 arguments.push_back(EvaluateExpression(expr));
             }
 
@@ -299,15 +394,6 @@ int main(int argc, char* argv[])
                 {
                     const int num_inputs = opcode.GetInfo().NumArguments() - 1;
 
-                    auto AssertRegisterReadable = [](RegisterType type) {
-                        if (type != RegisterType::Input && type != RegisterType::Temporary &&
-                            type != RegisterType::FloatUniform)
-                            throw "Specified register is not readable (only input, temporary and uniform registers are writeable)";
-                    };
-                    auto AssertRegisterWriteable = [](RegisterType type, int index) {
-                        if (type != RegisterType::Output && type != RegisterType::Temporary)
-                            throw "Specified register " + std::to_string((int)type) + " " + std::to_string(index) + " is not writeable (only output and temporary registers are writeable)";
-                    };
                     AssertRegisterWriteable(arguments[0].GetType(), arguments[0].GetIndex());
                     AssertRegisterReadable(arguments[1].GetType());
 
@@ -315,15 +401,17 @@ int main(int argc, char* argv[])
                     InputSwizzlerMask input_dest_mask = arguments[0].mask;
                     InputSwizzlerMask input_mask_src1;
                     InputSwizzlerMask input_mask_src2;
+
+                    // Make sure not more than one float uniform is used, and move it to src1 if need be
                     if (num_inputs > 1) {
                         AssertRegisterReadable(arguments[2].GetType());
 
-                        if (arguments[1].GetType() == RegisterType::FloatUniform &&
-                            arguments[2].GetType() == RegisterType::FloatUniform) {
+                        if (boost::count_if(arguments | boost::adaptors::sliced(1,3), IsFloatInput) == 2) {
                             throw "Not more than one input register may be a floating point uniform";
                         }
 
                         // If second argument is a floating point register, swap it to first place
+                        // TODO: Only do this for commutative operations, and switch to the inverse version otherwise.
                         if (arguments[2].GetType() == RegisterType::FloatUniform) {
                             boost::swap(arguments[1], arguments[2]);
                         }
@@ -331,6 +419,7 @@ int main(int argc, char* argv[])
                         shinst.common.src2 = SourceRegister::FromTypeAndIndex(arguments[2].GetType(), arguments[2].GetIndex());
                         input_mask_src2 = arguments[2].mask;
                     }
+
                     input_mask_src1 = arguments[1].mask;
 
                     shinst.common.dest = DestRegister::FromTypeAndIndex(arguments[0].GetType(), arguments[0].GetIndex());
@@ -362,9 +451,6 @@ int main(int argc, char* argv[])
                     // Build swizzle patterns
                     // TODO: In the case of "few arguments", we can re-use patterns created with
                     //       larger argument lists to optimize pattern count.
-                    SwizzlePattern swizzle_pattern;
-                    swizzle_pattern.hex = 0;
-
                     DestSwizzlerMask dest_mask{input_dest_mask};
                     SourceSwizzlerMask mask_src1;
                     SourceSwizzlerMask mask_src2;
@@ -375,41 +461,192 @@ int main(int argc, char* argv[])
                         mask_src1 = SourceSwizzlerMask::AccordingToDestMask(input_mask_src1, dest_mask);
                         mask_src2 = SourceSwizzlerMask::AccordingToDestMask(input_mask_src2, dest_mask);
                     }
-
-                    for (int i = 0, active_component = 0; i < 4; ++i) {
-                        if (dest_mask.component_set[i])
-                            swizzle_pattern.SetDestComponentEnabled(i, true);
-
-                        if (mask_src1.components[i] != SourceSwizzlerMask::Unspecified)
-                            swizzle_pattern.SetSelectorSrc1(i, static_cast<SwizzlePattern::Selector>(mask_src1.components[i]));
-
-                        if (num_inputs > 1 && mask_src2.components[i] != SourceSwizzlerMask::Unspecified)
-                            swizzle_pattern.SetSelectorSrc2(i, static_cast<SwizzlePattern::Selector>(mask_src2.components[i]));
-                    }
-
-                    swizzle_pattern.negate_src1 = arguments[1].negate;
-                    if (num_inputs > 1)
-                        swizzle_pattern.negate_src2 = arguments[2].negate;
-
-                    auto it = std::find_if(swizzle_patterns.begin(), swizzle_patterns.end(),
-                                            [&swizzle_pattern](const SwizzlePattern& val) { return val.hex == swizzle_pattern.hex; });
-                    if (it == swizzle_patterns.end()) {
-                        swizzle_patterns.push_back(swizzle_pattern);
-                        it = swizzle_patterns.end() - 1;
-
-                        if (swizzle_patterns.size() > 127)
-                            throw "Limit of 127 swizzle patterns has been exhausted";
-                    }
-                    shinst.common.operand_desc_id = it - swizzle_patterns.begin();
+                    shinst.common.operand_desc_id = FindOrAddSwizzlePattern(swizzle_patterns, dest_mask, mask_src1, mask_src2, arguments[0].negate, arguments[1].negate);
 
                     instructions.push_back(shinst);
                     break;
                 }
-
                 default:
                     throw "Unknown instruction encountered";
                     break;
             }
+            ++program_write_offset;
+        } else if (parser.ParseCompare(begin, input_code.end(), &compare_instruction)) {
+            Instruction shinst;
+            shinst.hex = 0;
+            shinst.opcode.Assign(compare_instruction.GetOpCode());
+
+            Atomic src1 = EvaluateExpression(compare_instruction.GetSrc1());
+            Atomic src2 = EvaluateExpression(compare_instruction.GetSrc2());
+
+            AssertRegisterReadable(src1.GetType());
+            AssertRegisterReadable(src2.GetType());
+
+            // If no swizzler have been specified, use .xyzw - compile errors triggered by this are intended! (accessing subvectors should be done explicitly)
+            InputSwizzlerMask input_mask_src1;
+            InputSwizzlerMask input_mask_src2;
+
+            // Make sure not more than one float uniform is used, and move it to src1 if need be
+            if (boost::count_if(std::initializer_list<Atomic>{src1, src2}, IsFloatInput) == 2) {
+                throw "Not more than one input register may be a floating point uniform";
+            }
+
+            // If second argument is a floating point register, swap it to first place
+            if (src2.GetType() == RegisterType::FloatUniform) {
+                boost::swap(src1, src2);
+                // TODO: Inverse operation if necessary!
+                throw "Unsupported setup: Second argument is a float uniform, but only the first may be one. Please manually move the float uniform to the first argument slot. Future assembler versions will do this automatically for you.";
+            }
+
+            shinst.common.src1 = SourceRegister::FromTypeAndIndex(src1.GetType(), src1.GetIndex());
+            shinst.common.src2 = SourceRegister::FromTypeAndIndex(src2.GetType(), src2.GetIndex());
+            input_mask_src1 = src1.mask;
+            input_mask_src2 = src2.mask;
+
+            if (input_mask_src1.num_components != 2 || input_mask_src2.num_components != 2) {
+                throw "Arguments need to have exactly two active components!"
+                      + std::string("src1: ") + std::to_string(input_mask_src1.num_components) + " components, "
+                      + std::string("src2: ") + std::to_string(input_mask_src2.num_components) + " components)";
+            }
+
+            shinst.common.compare_op.x = compare_instruction.GetOp1();
+            shinst.common.compare_op.y = compare_instruction.GetOp2();
+
+            // Build swizzle patterns
+            SourceSwizzlerMask mask_src1;
+            SourceSwizzlerMask mask_src2;
+            mask_src1 = SourceSwizzlerMask::Expand(input_mask_src1);
+            mask_src2 = SourceSwizzlerMask::Expand(input_mask_src2);
+            shinst.common.operand_desc_id = FindOrAddSwizzlePattern(swizzle_patterns, mask_src1, mask_src2, src1.negate, src2.negate);
+
+            instructions.push_back(shinst);
+            ++program_write_offset;
+        } else if (parser.ParseFlowControl(begin, input_code.end(), &statement_flow_control)) {
+            auto abstract_opcode = statement_flow_control.GetOpCode();
+            assert(abstract_opcode == OpCode::Id::GEN_IF   ||
+                   abstract_opcode == OpCode::Id::GEN_JMP  ||
+                   abstract_opcode == OpCode::Id::GEN_CALL ||
+                   abstract_opcode == OpCode::Id::LOOP     ||
+                   abstract_opcode == OpCode::Id::BREAKC);
+
+            Instruction shinst;
+            shinst.hex = 0;
+
+            if (statement_flow_control.HasCondition()) {
+                const auto& condition = statement_flow_control.GetCondition();
+                Atomic condition_variable = identifiers[condition.GetIdentifier()];
+                if (condition_variable.GetType() == RegisterType::ConditionalCode) {
+                    // TODO: Make sure swizzle mask is either not set or x or y or xy
+
+                    switch (abstract_opcode) {
+                    case OpCode::Id::GEN_IF:
+                        shinst.opcode = OpCode::Id::IFC;
+                        break;
+
+                    case OpCode::Id::GEN_JMP:
+                        shinst.opcode = OpCode::Id::JMPC;
+                        break;
+
+                    case OpCode::Id::GEN_CALL:
+                        shinst.opcode = OpCode::Id::CALLC;
+                        break;
+
+                    default:
+                        throw "May not pass a conditional code register to this instruction";
+                    }
+
+                    // TODO: Initialize flow_control.refx, flow_control.refy and flow_control.op
+                } else if (false) { // condition_variable.GetType() == RegisterType::BoolUniform) {
+                    // TODO: Make sure swizzle mask is not set
+
+                    if (condition.GetInvertFlag())
+                        throw "Negation cannot be used with boolean uniforms";
+
+                    switch (abstract_opcode) {
+                    case OpCode::Id::GEN_IF:
+                        shinst.opcode = OpCode::Id::IFU;
+                        break;
+
+                    case OpCode::Id::GEN_JMP:
+                        shinst.opcode = OpCode::Id::JMPU;
+                        break;
+
+                    case OpCode::Id::GEN_CALL:
+                        shinst.opcode = OpCode::Id::CALLU;
+                        break;
+
+                    default:
+                        throw "May not pass a bool uniform register to this instruction";
+                    }
+
+                    // TODO: Initialize flow_control.bool_uniform_id
+                } else if (false) { // condition_variable.GetType() == RegisterType::IntUniform) {
+                    // TODO: Make sure swizzle mask is not set
+
+                    if (condition.GetInvertFlag())
+                        throw "Negation cannot be used with integer uniforms";
+
+                    switch (abstract_opcode) {
+                    case OpCode::Id::LOOP:
+                        shinst.opcode = abstract_opcode;
+                        break;
+
+                    default:
+                        throw "May not pass a integer uniform register to this instruction";
+                    }
+
+                    // TODO: Initialize flow_control.int_uniform_id
+                } else {
+                    throw "Unexpected register type passed as condition (must be conditional code or boolean uniform register)";
+                }
+            } else {
+                switch (abstract_opcode) {
+                case OpCode::Id::BREAKC:
+                    throw "No condition passed for break-instruction";
+                    break;
+
+                case OpCode::Id::GEN_IF:
+                    throw "No condition passed for if-instruction";
+                    break;
+
+                case OpCode::Id::LOOP:
+                    throw "No condition passed for loop-instruction";
+                    break;
+
+                case OpCode::Id::GEN_JMP:
+                    throw "No condition passed for jmp-instruction";
+                    break;
+
+                case OpCode::Id::GEN_CALL:
+                    shinst.opcode = OpCode::Id::CALL;
+                    break;
+
+                default:
+                    shinst.opcode = abstract_opcode;
+                }
+            }
+
+            if (statement_flow_control.HasReturnLabel()) {
+
+                if (abstract_opcode == OpCode::Id::GEN_JMP)
+                    throw "Cannot specify return labels with jmp. Use call instead if you need automatic function returning.";
+
+                assert(abstract_opcode == OpCode::Id::GEN_CALL);
+
+                // TODO: Set flow_control.num_instructions
+            } else {
+                if (abstract_opcode == OpCode::Id::GEN_CALL) {
+                    throw "Must specify a return label for call. Use jmp instead if you don't need automatic function returning.";
+                }
+            }
+
+            if (abstract_opcode != OpCode::Id::GEN_IF && abstract_opcode != OpCode::Id::LOOP) {
+                // TODO: Set flow_control.dest_offset
+            } else {
+                // TODO: Find ELSE/ENDIF/ENDLOOP instruction to set flow_control.dest_offset and flow_control.num_instructions
+            }
+
+            instructions.push_back(shinst);
             ++program_write_offset;
         } else if (parser.ParseDeclaration(begin, input_code.end(), &statement_declaration)) {
             auto& var = statement_declaration;
@@ -449,13 +686,15 @@ int main(int argc, char* argv[])
             identifiers.push_back(ret);
             context.identifiers.add(idname, new_identifier);
         } else {
+            // TODO: Print error message: Unknown directive
             break;
         }
     }
 
     // Error out if we didn't parse the full file
     if (begin != input_code.end()) {
-        std::cerr << "Aborting due to parse error..." << std::endl; // + input_code.substr(begin - input_code.begin());
+        std::cerr << "Aborting due to parse error..." << std::endl << input_code.substr(begin - input_code.begin()) << std::endl;
+        //std::cerr << "Aborting due to parse error..." << std::endl; // + input_code.substr(begin - input_code.begin());
         exit(1);
     }
 
