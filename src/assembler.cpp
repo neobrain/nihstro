@@ -158,8 +158,20 @@ struct SourceSwizzlerMask {
     Component components[4];
 };
 
+static InputSwizzlerMask MergeSwizzleMasks(const InputSwizzlerMask& inner_mask, const InputSwizzlerMask& outer_mask) {
+    // TODO: Error out if the swizzle masks can't actually be merged..
+
+    InputSwizzlerMask out;
+    out.num_components = outer_mask.num_components;
+    for (int comp = 0; comp < outer_mask.num_components; ++comp) {
+        out.components[comp] = inner_mask.components[outer_mask.components[comp]];
+    }
+
+    return out;
+}
+
 // Evaluate expression to a particular Atomic
-Atomic EvaluateExpression(const Expression& expr) {
+static Atomic EvaluateExpression(const Expression& expr) {
     Atomic ret = identifiers[expr.GetIdentifier()];
 
     ret.negate = expr.GetSign() == -1;
@@ -190,16 +202,9 @@ Atomic EvaluateExpression(const Expression& expr) {
         ret.register_index += index;
     }
     // Apply swizzle mask(s)
-    for (const auto& swizzle_mask : expr.GetSwizzleMasks()) {
-        // TODO: Error out if the swizzle masks can't actually be merged..
+    for (const auto& swizzle_mask : expr.GetSwizzleMasks())
+        ret.mask = MergeSwizzleMasks(ret.mask, swizzle_mask);
 
-        InputSwizzlerMask out;
-        out.num_components = swizzle_mask.num_components;
-        for (int comp = 0; comp < swizzle_mask.num_components; ++comp) {
-            out.components[comp] = ret.mask.components[swizzle_mask.components[comp]];
-        }
-        ret.mask = out;
-    }
     return ret;
 };
 
@@ -349,7 +354,6 @@ int main(int argc, char* argv[])
         assert(!name.empty());
 
         context.identifiers.add(name, i);
-        std::cout << name << std::endl;
     }
 
     struct CallStackElement {
@@ -664,21 +668,72 @@ int main(int argc, char* argv[])
 
             if (statement_flow_control.HasCondition()) {
                 const auto& condition = statement_flow_control.GetCondition();
-                Atomic condition_variable = identifiers[condition.GetIdentifier()];
+                Atomic condition_variable = identifiers[condition.GetFirstInput().GetIdentifier()];
                 if (condition_variable.GetType() == RegisterType::ConditionalCode) {
                     // TODO: Make sure swizzle mask is either not set or x or y or xy
+                    if (condition.GetFirstInput().HasSwizzleMask())
+                        condition_variable.mask = MergeSwizzleMasks(condition_variable.mask, condition.GetFirstInput().GetSwizzleMask());
 
                     auto opcode = opcode_with_condition.find(abstract_opcode);
                     if (opcode == opcode_with_condition.end())
                         throw "May not pass a conditional code register to this instruction";
-                    shinst.opcode = opcode->second;
 
-                    // TODO: Initialize flow_control.refx, flow_control.refy and flow_control.op
+                    Instruction::FlowControlType::Op op;
+                    bool negate_flags[2] = {};
+
+                    if (condition.GetConditionOp() == Instruction::FlowControlType::JustX) {
+                        if (condition_variable.mask.num_components == 1) {
+                            if (condition_variable.mask.components[0] == InputSwizzlerMask::y) {
+                                op = Instruction::FlowControlType::JustY;
+                                negate_flags[1] = condition.GetFirstInput().GetInvertFlag();
+                            } else {
+                                op = Instruction::FlowControlType::JustX;
+                                negate_flags[0] = condition.GetFirstInput().GetInvertFlag();
+                            }
+                        } else if (condition_variable.mask.num_components == 2) {
+                            op = Instruction::FlowControlType::And;
+                            negate_flags[0] = negate_flags[1] = condition.GetFirstInput().GetInvertFlag();
+                        } else {
+                            throw "May only involve the x and y components in conditions";
+                        }
+                    } else {
+                        Atomic second_condition_variable = identifiers[condition.GetSecondInput().GetIdentifier()];
+                        if (second_condition_variable.GetType() != RegisterType::ConditionalCode)
+                            throw "Combining conditions via && and || only works for conditions based on two conditional codes";
+
+                        if (condition.GetSecondInput().HasSwizzleMask())
+                            second_condition_variable.mask = MergeSwizzleMasks(second_condition_variable.mask, condition.GetSecondInput().GetSwizzleMask());
+
+                        if (condition_variable.mask.num_components != 1 || second_condition_variable.mask.num_components != 1)
+                            throw "Only one-component expressions can be combined via && and ||";
+
+                        if (condition_variable.mask.components[0] == second_condition_variable.mask.components[0])
+                            throw "Different conditional code components need to be used when combining conditions";
+
+                        // Move x component to the first slot
+                        if (condition_variable.mask.components[0] == InputSwizzlerMask::y) {
+                            negate_flags[0] = condition.GetSecondInput().GetInvertFlag();
+                            negate_flags[1] = condition.GetFirstInput().GetInvertFlag();
+                        } else {
+                            negate_flags[0] = condition.GetFirstInput().GetInvertFlag();
+                            negate_flags[1] = condition.GetSecondInput().GetInvertFlag();
+                        }
+
+                        op = condition.GetConditionOp();
+                    }
+
+                    shinst.opcode = opcode->second;
+                    shinst.flow_control.refx = !negate_flags[0];
+                    shinst.flow_control.refy = !negate_flags[1];
+                    shinst.flow_control.op = op;
 
                 } else if (condition_variable.GetType() == RegisterType::BoolUniform) {
                     // TODO: Make sure swizzle mask is not set
 
-                    if (condition.GetInvertFlag())
+                    if (condition.GetConditionOp() != Instruction::FlowControlType::JustX)
+                        throw "May not combine conditions when branching on bool uniforms";
+
+                    if (condition.GetFirstInput().GetInvertFlag())
                         throw "Negation cannot be used with boolean uniforms";
 
                     auto opcode = opcode_with_bool_uniform.find(abstract_opcode);
@@ -691,7 +746,10 @@ int main(int argc, char* argv[])
                 } else if (condition_variable.GetType() == RegisterType::IntUniform) {
                     // TODO: Make sure swizzle mask is not set
 
-                    if (condition.GetInvertFlag())
+                    if (condition.GetConditionOp() != Instruction::FlowControlType::JustX)
+                        throw "May not combine conditions when branching on bool uniforms";
+
+                    if (condition.GetFirstInput().GetInvertFlag())
                         throw "Negation cannot be used with integer uniforms";
 
                     auto opcode = opcode_with_int_uniform.find(abstract_opcode);

@@ -160,9 +160,7 @@ private:
     }
 };
 
-struct Condition : boost::fusion::vector<bool, Identifier, boost::optional<InputSwizzlerMask>> {
-    Condition() = default;
-
+struct ConditionInput : boost::fusion::vector<bool, Identifier, boost::optional<InputSwizzlerMask>> {
     bool GetInvertFlag() const {
         return boost::fusion::at_c<0>(*this);
     }
@@ -177,6 +175,25 @@ struct Condition : boost::fusion::vector<bool, Identifier, boost::optional<Input
 
     const InputSwizzlerMask& GetSwizzleMask() const {
         return *boost::fusion::at_c<2>(*this);
+    }
+
+};
+
+struct Condition : boost::fusion::vector<ConditionInput,
+                                         Instruction::FlowControlType::Op,
+                                         ConditionInput> {
+    Condition() = default;
+
+    const ConditionInput& GetFirstInput() const {
+        return boost::fusion::at_c<0>(*this);
+    }
+
+    Instruction::FlowControlType::Op GetConditionOp() const {
+        return boost::fusion::at_c<1>(*this);
+    }
+
+    const ConditionInput& GetSecondInput() const {
+        return boost::fusion::at_c<2>(*this);
     }
 };
 
