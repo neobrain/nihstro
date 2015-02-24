@@ -42,6 +42,8 @@ enum class RegisterType {
     Output,
     Temporary,
     FloatUniform,
+    IntUniform,
+    BoolUniform,
     Address,
     ConditionalCode,
     Unknown
@@ -53,6 +55,8 @@ static std::string GetRegisterName(RegisterType type) {
     case RegisterType::Output:          return "o";
     case RegisterType::Temporary:       return "r";
     case RegisterType::FloatUniform:    return "c";
+    case RegisterType::IntUniform:      return "i";
+    case RegisterType::BoolUniform:     return "b";
     case RegisterType::ConditionalCode: return "cc";
     case RegisterType::Unknown:         return "u";
     default:                            return "";
@@ -268,13 +272,13 @@ struct OpCode {
         MAD     = 0x38, // lower 3 opcode bits ignored
 
         // Pseudo-instructions, used internally by the assembler
-        GEN_IF      = 0x40, // Generic IF (IFC or IFU)
-        ELSE        = 0x41,
-        ENDIF       = 0x42,
-        GEN_CALL    = 0x43, // Generic CALL (CALL, CALC, or CALLU)
-        GEN_JMP     = 0x44, // Generic JMP (JMPC or JMPU)
-        RET         = 0x45, // Return from function
-        ENDLOOP     = 0x46
+        GEN_IF  = 0x40, // Generic IF (IFC or IFU)
+        ELSE,
+        ENDIF,
+        GEN_CALL,       // Generic CALL (CALL, CALC, or CALLU)
+        GEN_JMP,        // Generic JMP (JMPC or JMPU)
+        //RET,          // Return from function (not supported yet)
+        ENDLOOP
     };
 
     enum class Type {

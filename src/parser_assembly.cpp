@@ -210,6 +210,49 @@ private:
 };
 
 template<typename Iterator>
+struct TrivialOpParser : qi::grammar<Iterator, OpCode(), AssemblySkipper<Iterator>> {
+    using Skipper = AssemblySkipper<Iterator>;
+
+    TrivialOpParser(const ParserContext& context)
+                : TrivialOpParser::base_type(instruction),
+                  common(context),
+                  diagnostics(common.diagnostics) {
+
+        // Setup symbol table
+        opcodes.add
+                   ( "nop",      OpCode::Id::NOP     )
+                   ( "end",      OpCode::Id::END     )
+                   ( "emit",     OpCode::Id::EMIT    )
+                   ( "else",     OpCode::Id::ELSE    )
+                   ( "endif",    OpCode::Id::ENDIF   )
+                   ( "endloop",  OpCode::Id::ENDLOOP );
+
+        // Setup rules
+        opcode = qi::no_case[qi::lexeme[opcodes]];
+
+        instruction %= opcode > qi::omit[qi::eol | qi::eoi];
+
+        // Error handling
+        BOOST_SPIRIT_DEBUG_NODE(opcode);
+        BOOST_SPIRIT_DEBUG_NODE(instruction);
+
+        qi::on_error<qi::fail>(instruction, error_handler(phoenix::ref(diagnostics), _1, _2, _3, _4));
+    }
+
+    CommonRules<Iterator> common;
+
+    qi::symbols<char, OpCode> opcodes;
+
+    // Rule-ified symbols, which can be assigned names
+    qi::rule<Iterator, OpCode(), Skipper> opcode;
+
+    // Compounds
+    qi::rule<Iterator, OpCode(), Skipper> instruction;
+
+    Diagnostics diagnostics;
+};
+
+template<typename Iterator>
 struct FloatOpParser : qi::grammar<Iterator, FloatOpInstruction(), AssemblySkipper<Iterator>> {
     using Skipper = AssemblySkipper<Iterator>;
 
@@ -539,7 +582,7 @@ struct DeclarationParser : qi::grammar<Iterator, StatementDeclaration(), Assembl
 struct Parser::ParserImpl {
     using Iterator = std::string::iterator;
 
-    ParserImpl(const ParserContext& context) : label(context), instruction(context), compare(context), flow_control(context), declaration(context) {
+    ParserImpl(const ParserContext& context) : label(context), simple_instruction(context), instruction(context), compare(context), flow_control(context), declaration(context) {
     }
 
     void Skip(Iterator& begin, Iterator end) {
@@ -552,6 +595,12 @@ struct Parser::ParserImpl {
         assert(content != nullptr);
 
         return phrase_parse(begin, end, label, skipper, *content);
+    }
+
+    bool ParseSimpleInstruction(Iterator& begin, Iterator end, OpCode* content) {
+        assert(content != nullptr);
+
+        return phrase_parse(begin, end, simple_instruction, skipper, *content);
     }
 
     bool ParseFloatOp(Iterator& begin, Iterator end, FloatOpInstruction* content) {
@@ -582,6 +631,7 @@ private:
     AssemblySkipper<Iterator>   skipper;
 
     LabelParser<Iterator>       label;
+    TrivialOpParser<Iterator>   simple_instruction;
     FloatOpParser<Iterator>     instruction;
     CompareParser<Iterator>     compare;
     FlowControlParser<Iterator> flow_control;
@@ -600,6 +650,10 @@ void Parser::Skip(Iterator& begin, Iterator end) {
 
 bool Parser::ParseLabel(Iterator& begin, Iterator end, StatementLabel* label) {
     return impl->ParseLabel(begin, end, label);
+}
+
+bool Parser::ParseSimpleInstruction(Iterator& begin, Iterator end, OpCode* opcode) {
+    return impl->ParseSimpleInstruction(begin, end, opcode);
 }
 
 bool Parser::ParseFloatOp(Iterator& begin, Iterator end, FloatOpInstruction* instruction) {

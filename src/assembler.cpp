@@ -30,6 +30,8 @@
 #include <sstream>
 #include <fstream>
 
+#include <stack>
+
 #include <boost/range/adaptor/sliced.hpp>
 #include <boost/range/algorithm/count_if.hpp>
 
@@ -48,8 +50,10 @@ enum class RegisterSpace : int {
     Address         = 0x90,
     AddressEnd      = 0x92,
     ConditionalCode = 0x93,
+    IntUniform      = 0x94,
+    BoolUniform     = 0x98,
 
-    Max             = ConditionalCode,
+    Max             = BoolUniform + 15,
 };
 
 // Smallest unit an expression evaluates to:
@@ -62,7 +66,11 @@ struct Atomic {
     int relative_address_source;
 
     const RegisterType GetType() const {
-        if (register_index >= (int)RegisterSpace::ConditionalCode)
+        if (register_index >= (int)RegisterSpace::BoolUniform)
+            return RegisterType::BoolUniform;
+        else if (register_index >= (int)RegisterSpace::IntUniform)
+            return RegisterType::IntUniform;
+        else if (register_index >= (int)RegisterSpace::ConditionalCode)
             return RegisterType::ConditionalCode;
         else if (register_index >= (int)RegisterSpace::Address)
             return RegisterType::Address;
@@ -77,7 +85,11 @@ struct Atomic {
     }
 
     int GetIndex() const {
-        if (register_index >= (int)RegisterSpace::ConditionalCode)
+        if (register_index >= (int)RegisterSpace::BoolUniform)
+            return register_index - (int)RegisterSpace::BoolUniform;
+        else if (register_index >= (int)RegisterSpace::IntUniform)
+            return register_index - (int)RegisterSpace::IntUniform;
+        else if (register_index >= (int)RegisterSpace::ConditionalCode)
             return register_index - (int)RegisterSpace::ConditionalCode;
         else if (register_index >= (int)RegisterSpace::Address)
             return register_index - (int)RegisterSpace::Address;
@@ -315,7 +327,11 @@ int main(int argc, char* argv[])
         identifiers.push_back({i, InputSwizzlerMask::FullMask()});
 
         std::string name;
-        if (i == (int)RegisterSpace::ConditionalCode)
+        if (i >= (int)RegisterSpace::BoolUniform)
+            name = "b" + std::to_string(i - (int)RegisterSpace::BoolUniform);
+        else if (i >= (int)RegisterSpace::IntUniform)
+            name = "i" + std::to_string(i - (int)RegisterSpace::IntUniform);
+        else if (i == (int)RegisterSpace::ConditionalCode)
             name = "cc";
         else if (i == (int)RegisterSpace::AddressEnd)
             name = "lcnt";
@@ -333,8 +349,16 @@ int main(int argc, char* argv[])
         assert(!name.empty());
 
         context.identifiers.add(name, i);
+        std::cout << name << std::endl;
     }
 
+    struct CallStackElement {
+        OpCode original_opcode;
+        unsigned instruction_index;
+        unsigned alternative_position;
+        unsigned end_position;
+    };
+    std::stack<CallStackElement> call_stack;
 
     while (true) {
         Parser parser(context);
@@ -343,6 +367,7 @@ int main(int argc, char* argv[])
         CompareInstruction compare_instruction;
         FlowControlInstruction statement_flow_control;
         StatementDeclaration statement_declaration;
+        OpCode statement_simple;
 
         // First off, move iterator past preceding comments, blanks, etc
         parser.Skip(begin, input_code.end());
@@ -357,9 +382,9 @@ int main(int argc, char* argv[])
                 throw "Specified register " + std::to_string((int)type) + " " + std::to_string(index) + " is not writeable (only output and temporary registers are writeable)";
         };
 
-            static auto IsFloatInput = [](const Atomic& src) {
-                return src.GetType() == RegisterType::FloatUniform;
-            };
+        static auto IsFloatInput = [](const Atomic& src) {
+            return src.GetType() == RegisterType::FloatUniform;
+        };
 
         // Now perform the actual parsing
         preparse_begin = begin;
@@ -375,6 +400,90 @@ int main(int argc, char* argv[])
 
             CustomLabelInfo label_info = { program_write_offset, symbol_table_index };
             label_table.push_back(label_info);
+        } else if (parser.ParseSimpleInstruction(begin, input_code.end(), &statement_simple)) {
+            OpCode opcode = statement_simple;
+
+            switch (opcode) {
+            case OpCode::Id::NOP:
+            case OpCode::Id::END:
+            case OpCode::Id::EMIT:
+            {
+                Instruction shinst;
+                shinst.hex = 0;
+                shinst.opcode = opcode;
+                instructions.push_back(shinst);
+                ++program_write_offset;
+                break;
+            }
+
+            case OpCode::Id::ELSE:
+            {
+                if (call_stack.empty())
+                    throw "ELSE may not be used without prior IF!";
+
+                auto& reference = call_stack.top();
+                if (reference.original_opcode != OpCode::Id::GEN_IF)
+                    throw "ELSE may not be used if current scope is not an IF-body";
+
+                if (reference.alternative_position != -1)
+                    throw "ELSE was already called for this IF statement!";
+
+                reference.alternative_position = program_write_offset;
+                break;
+            }
+
+            case OpCode::Id::ENDIF:
+            {
+                if (call_stack.empty())
+                    throw "ENDIF may not be used without prior IF!";
+
+                auto& reference = call_stack.top();
+                reference.end_position = program_write_offset;
+
+                if (reference.original_opcode != OpCode::Id::GEN_IF)
+                    throw "ENDIF may not be used if the current scope is not an IF-body";
+
+                // If no ELSE branch was set, set it to the ENDIF position
+                if (reference.alternative_position == -1)
+                    reference.alternative_position = reference.end_position;
+
+                Instruction& shinst = instructions.at(reference.instruction_index);
+                shinst.flow_control.dest_offset = reference.alternative_position;
+                shinst.flow_control.num_instructions = reference.end_position - reference.alternative_position;
+
+                call_stack.pop();
+
+                break;
+            }
+
+            case OpCode::Id::ENDLOOP:
+            {
+                if (call_stack.empty())
+                    throw "ENDLOOP may not be used without prior LOOP!";
+
+                auto& reference = call_stack.top();
+                reference.end_position = program_write_offset;
+
+                if (reference.original_opcode != OpCode::Id::LOOP)
+                    throw "ENDLOOP may not be used if the current scope is not an LOOP-body";
+
+                // TODO: Assert that the LOOP body spans at least one instruction!
+
+                Instruction& shinst = instructions.at(reference.instruction_index);
+                shinst.flow_control.dest_offset = reference.end_position - 1; // Point to the last instruction of the body
+
+                call_stack.pop();
+
+                break;
+            }
+
+            default:
+            {
+                std::stringstream ss("Unknown opcode ");
+                ss << static_cast<uint32_t>((OpCode::Id)opcode);
+                throw ss.str();
+            }
+            }
         } else if (parser.ParseFloatOp(begin, input_code.end(), &statement_instruction)) {
             auto& instr = statement_instruction;
 
@@ -532,70 +641,66 @@ int main(int argc, char* argv[])
             Instruction shinst;
             shinst.hex = 0;
 
+            static const std::map<OpCode, OpCode> opcode_plain = {
+                { OpCode::Id::GEN_CALL, OpCode::Id::CALL }
+            };
+
+            static const std::map<OpCode, OpCode> opcode_with_condition = {
+                { OpCode::Id::BREAKC,   OpCode::Id::BREAKC }, // TODO: Make sure this isn't used outside of LOOPs
+                { OpCode::Id::GEN_IF,   OpCode::Id::IFC },
+                { OpCode::Id::GEN_JMP,  OpCode::Id::JMPC },
+                { OpCode::Id::GEN_CALL, OpCode::Id::CALLC }
+            };
+
+            static const std::map<OpCode, OpCode> opcode_with_bool_uniform = {
+                { OpCode::Id::GEN_IF,   OpCode::Id::IFU },
+                { OpCode::Id::GEN_JMP,  OpCode::Id::JMPU },
+                { OpCode::Id::GEN_CALL, OpCode::Id::CALLU }
+            };
+
+            static const std::map<OpCode, OpCode> opcode_with_int_uniform = {
+                { OpCode::Id::LOOP,     OpCode::Id::LOOP }
+            };
+
             if (statement_flow_control.HasCondition()) {
                 const auto& condition = statement_flow_control.GetCondition();
                 Atomic condition_variable = identifiers[condition.GetIdentifier()];
                 if (condition_variable.GetType() == RegisterType::ConditionalCode) {
                     // TODO: Make sure swizzle mask is either not set or x or y or xy
 
-                    switch (abstract_opcode) {
-                    case OpCode::Id::GEN_IF:
-                        shinst.opcode = OpCode::Id::IFC;
-                        break;
-
-                    case OpCode::Id::GEN_JMP:
-                        shinst.opcode = OpCode::Id::JMPC;
-                        break;
-
-                    case OpCode::Id::GEN_CALL:
-                        shinst.opcode = OpCode::Id::CALLC;
-                        break;
-
-                    default:
+                    auto opcode = opcode_with_condition.find(abstract_opcode);
+                    if (opcode == opcode_with_condition.end())
                         throw "May not pass a conditional code register to this instruction";
-                    }
+                    shinst.opcode = opcode->second;
 
                     // TODO: Initialize flow_control.refx, flow_control.refy and flow_control.op
-                } else if (false) { // condition_variable.GetType() == RegisterType::BoolUniform) {
+
+                } else if (condition_variable.GetType() == RegisterType::BoolUniform) {
                     // TODO: Make sure swizzle mask is not set
 
                     if (condition.GetInvertFlag())
                         throw "Negation cannot be used with boolean uniforms";
 
-                    switch (abstract_opcode) {
-                    case OpCode::Id::GEN_IF:
-                        shinst.opcode = OpCode::Id::IFU;
-                        break;
-
-                    case OpCode::Id::GEN_JMP:
-                        shinst.opcode = OpCode::Id::JMPU;
-                        break;
-
-                    case OpCode::Id::GEN_CALL:
-                        shinst.opcode = OpCode::Id::CALLU;
-                        break;
-
-                    default:
+                    auto opcode = opcode_with_bool_uniform.find(abstract_opcode);
+                    if (opcode == opcode_with_bool_uniform.end())
                         throw "May not pass a bool uniform register to this instruction";
-                    }
+                    shinst.opcode = opcode->second;
 
-                    // TODO: Initialize flow_control.bool_uniform_id
-                } else if (false) { // condition_variable.GetType() == RegisterType::IntUniform) {
+                    shinst.flow_control.bool_uniform_id = condition_variable.GetIndex();
+
+                } else if (condition_variable.GetType() == RegisterType::IntUniform) {
                     // TODO: Make sure swizzle mask is not set
 
                     if (condition.GetInvertFlag())
                         throw "Negation cannot be used with integer uniforms";
 
-                    switch (abstract_opcode) {
-                    case OpCode::Id::LOOP:
-                        shinst.opcode = abstract_opcode;
-                        break;
+                    auto opcode = opcode_with_int_uniform.find(abstract_opcode);
+                    if (opcode == opcode_with_int_uniform.end())
+                        throw "May not pass an integer uniform register to this instruction";
+                    shinst.opcode = opcode->second;
 
-                    default:
-                        throw "May not pass a integer uniform register to this instruction";
-                    }
+                    shinst.flow_control.int_uniform_id = condition_variable.GetIndex();
 
-                    // TODO: Initialize flow_control.int_uniform_id
                 } else {
                     throw "Unexpected register type passed as condition (must be conditional code or boolean uniform register)";
                 }
@@ -640,10 +745,12 @@ int main(int argc, char* argv[])
                 }
             }
 
-            if (abstract_opcode != OpCode::Id::GEN_IF && abstract_opcode != OpCode::Id::LOOP) {
-                // TODO: Set flow_control.dest_offset
+            if (abstract_opcode == OpCode::Id::GEN_IF) {
+                call_stack.emplace(CallStackElement{abstract_opcode, (unsigned)instructions.size(), (unsigned)-1, (unsigned)-1});
+            } else if (abstract_opcode == OpCode::Id::LOOP) {
+                call_stack.emplace(CallStackElement{abstract_opcode, (unsigned)instructions.size(), (unsigned)-1, (unsigned)-1});
             } else {
-                // TODO: Find ELSE/ENDIF/ENDLOOP instruction to set flow_control.dest_offset and flow_control.num_instructions
+                // TODO: Set flow_control.dest_offset
             }
 
             instructions.push_back(shinst);
@@ -697,6 +804,9 @@ int main(int argc, char* argv[])
         //std::cerr << "Aborting due to parse error..." << std::endl; // + input_code.substr(begin - input_code.begin());
         exit(1);
     }
+
+    if (!call_stack.empty())
+        throw "Not all IF/LOOP bodies are closed. Did you forget an ENDIF or ENDLOOP?";
 
     auto GetSymbolTableEntryByteOffset = [&symbol_table](int index) {
         int offset = 0;
