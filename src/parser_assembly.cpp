@@ -418,6 +418,8 @@ struct CompareParser : qi::grammar<Iterator, CompareInstruction(), AssemblySkipp
 template<typename Iterator>
 struct FlowControlParser : qi::grammar<Iterator, FlowControlInstruction(), AssemblySkipper<Iterator>> {
     using Skipper = AssemblySkipper<Iterator>;
+    using ConditionOp = Instruction::FlowControlType;
+    using ConditionOpEnum = Instruction::FlowControlType::Op;
 
     FlowControlParser(const ParserContext& context)
                 : FlowControlParser::base_type(flow_control_instruction),
@@ -437,6 +439,10 @@ struct FlowControlParser : qi::grammar<Iterator, FlowControlInstruction(), Assem
                    ( "jmp",   OpCode::Id::GEN_JMP  )
                    ( "call",  OpCode::Id::GEN_CALL );
 
+        condition_ops.add
+                   ( "&&",    ConditionOp::And     )
+                   ( "||",    ConditionOp::Or      );
+
         // Setup rules
 
         auto comma_rule = qi::lit(',');
@@ -448,8 +454,15 @@ struct FlowControlParser : qi::grammar<Iterator, FlowControlInstruction(), Assem
         opcode[0] = qi::lexeme[qi::no_case[opcodes[0]] >> blank_rule];
         opcode[1] = qi::lexeme[qi::no_case[opcodes[1]] >> blank_rule];
 
+        condition_op = qi::lexeme[condition_ops];
+
+        negation = qi::matches[qi::lit("!")];
+
+        condition_input = negation >> known_identifier >> -(qi::lit('.') > swizzle_mask);
+
         // May be a condition involving the conditional codes, or a reference to a uniform
-        condition = qi::matches[qi::lit("!")] >> known_identifier >> -(qi::lit('.') > swizzle_mask);
+        condition = (condition_input >> condition_op >> condition_input)
+                    | (condition_input >> qi::attr(ConditionOp::JustX) >> qi::attr(ConditionInput{}));
 
         // if condition
         instr[0] = opcode[0]
@@ -468,6 +481,8 @@ struct FlowControlParser : qi::grammar<Iterator, FlowControlInstruction(), Assem
         // Error handling
         BOOST_SPIRIT_DEBUG_NODE(opcode[0]);
         BOOST_SPIRIT_DEBUG_NODE(opcode[1]);
+        BOOST_SPIRIT_DEBUG_NODE(negation);
+        BOOST_SPIRIT_DEBUG_NODE(condition_input);
         BOOST_SPIRIT_DEBUG_NODE(condition);
 
         BOOST_SPIRIT_DEBUG_NODE(instr[0]);
@@ -480,17 +495,19 @@ struct FlowControlParser : qi::grammar<Iterator, FlowControlInstruction(), Assem
     CommonRules<Iterator> common;
 
     qi::symbols<char, OpCode>                     opcodes[2];
+    qi::symbols<char, ConditionOpEnum>            condition_ops;
 
     // Rule-ified symbols, which can be assigned debug names
     qi::rule<Iterator, OpCode(),                  Skipper> opcode[2];
+    qi::rule<Iterator, ConditionOpEnum(),         Skipper> condition_op;
 
     // Building blocks
     qi::rule<Iterator, Expression(),              Skipper>& expression;
     qi::rule<Iterator, std::string(),             Skipper>& identifier;
     qi::rule<Iterator, Identifier(),              Skipper>& known_identifier;
     qi::rule<Iterator, InputSwizzlerMask(),       Skipper>& swizzle_mask;
+    qi::rule<Iterator, ConditionInput(),          Skipper> condition_input;
     qi::rule<Iterator, Condition(),               Skipper> condition;
-    qi::rule<Iterator, boost::optional<Condition>(),               Skipper> optional_condition;
 
     // Compounds
     qi::rule<Iterator, FlowControlInstruction(),  Skipper> instr[2];
@@ -498,6 +515,7 @@ struct FlowControlParser : qi::grammar<Iterator, FlowControlInstruction(), Assem
 
     // Utility
     qi::rule<Iterator,                            Skipper> not_comma;
+    qi::rule<Iterator, bool(),                    Skipper> negation;
 
     Diagnostics diagnostics;
 };
