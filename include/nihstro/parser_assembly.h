@@ -296,6 +296,8 @@ struct Parser {
 
     void Skip(Iterator& begin, Iterator end);
 
+    void SkipSingleLine(Iterator& begin, Iterator end);
+
     bool ParseDeclaration(Iterator& begin, Iterator end, StatementDeclaration* declaration);
 
     bool ParseLabel(Iterator& begin, Iterator end, StatementLabel* label);

@@ -311,8 +311,6 @@ int main(int argc, char* argv[])
         throw "Could not open input file";
     }
 
-    begin = input_code.begin();
-
     std::vector<Instruction> instructions;
     std::vector<SwizzlePattern> swizzle_patterns;
 
@@ -364,8 +362,111 @@ int main(int argc, char* argv[])
     };
     std::stack<CallStackElement> call_stack;
 
+    auto LookupLableAddress = [&symbol_table, &label_table](const std::string& name) {
+        for (unsigned label_index = 0; label_index < label_table.size(); ++label_index) {
+            const auto& label_entry = label_table[label_index];
+
+            if (symbol_table[label_entry.symbol_table_index] == name)
+                return label_entry.program_offset;
+        }
+
+        throw "Unknown label";
+    };
+
+    // First off, build label table via preprocessing
+    begin = input_code.begin();
+    ParserContext labelcontext = context;
+    while (begin != input_code.end()) {
+        Parser parser(labelcontext);
+        StatementLabel statement_label;
+        FloatOpInstruction statement_instruction;
+        CompareInstruction compare_instruction;
+        FlowControlInstruction statement_flow_control;
+        StatementDeclaration statement_declaration;
+        OpCode statement_simple;
+
+        parser.Skip(begin, input_code.end());
+
+        if (parser.ParseLabel(begin, input_code.end(), &statement_label)) {
+            std::string label_symbol = statement_label;
+
+            auto it = std::find(symbol_table.begin(), symbol_table.end(), label_symbol);
+            if (it != symbol_table.end())
+                throw "Label \"" + label_symbol + "\" already defined in symbol table";
+
+            symbol_table.push_back(label_symbol);
+            uint32_t symbol_table_index = symbol_table.size() - 1;
+
+            CustomLabelInfo label_info = { program_write_offset, symbol_table_index };
+            label_table.push_back(label_info);
+        } else if (parser.ParseSimpleInstruction(begin, input_code.end(), &statement_simple)) {
+            OpCode opcode = statement_simple;
+
+            switch (opcode) {
+            case OpCode::Id::NOP:
+            case OpCode::Id::END:
+            case OpCode::Id::EMIT:
+                ++program_write_offset;
+                break;
+
+            case OpCode::Id::ELSE:
+            case OpCode::Id::ENDIF:
+            case OpCode::Id::ENDLOOP:
+                break;
+
+            default:
+            {
+                std::stringstream ss("Unknown opcode ");
+                ss << static_cast<uint32_t>((OpCode::Id)opcode);
+                throw ss.str();
+            }
+            }
+        } else if (parser.ParseFloatOp(begin, input_code.end(), &statement_instruction)) {
+            ++program_write_offset;
+        } else if (parser.ParseCompare(begin, input_code.end(), &compare_instruction)) {
+            ++program_write_offset;
+        } else if (parser.ParseFlowControl(begin, input_code.end(), &statement_flow_control)) {
+            ++program_write_offset;
+        } else if (parser.ParseDeclaration(begin, input_code.end(), &statement_declaration)) {
+            auto& var = statement_declaration;
+
+            Identifier id;
+            std::string idname;
+
+            if (var.which() == 0) {
+                auto& var2 = boost::get<DeclarationConstant>(var);
+                id = boost::fusion::at_c<1>(var2);
+                idname = boost::fusion::at_c<0>(var2);
+            } else if (var.which() == 1) {
+                auto& var2 = boost::get<DeclarationOutput>(var);
+                id = boost::fusion::at_c<1>(var2);
+                idname = boost::fusion::at_c<0>(var2);
+            } else if (var.which() == 2) {
+                auto& var2 = boost::get<DeclarationAlias>(var);
+                id = boost::fusion::at_c<1>(var2);
+                idname = boost::fusion::at_c<0>(var2);
+            } else {
+                throw "meh";
+            }
+
+            Atomic ret = identifiers[id];
+            Identifier new_identifier = identifiers.size();
+            identifiers.push_back(ret);
+            labelcontext.identifiers.add(idname, new_identifier);
+        } else {
+            parser.SkipSingleLine(begin, input_code.end());
+        }
+    }
+
+    for (auto& label : symbol_table)
+        std::cout << label << " -> " << LookupLableAddress(label) << std::endl;
+    std::cout << std::endl;
+
+    begin = input_code.begin();
+
+    Parser parser(context);
+    program_write_offset = 0;
     while (true) {
-        Parser parser(context);
         StatementLabel statement_label;
         FloatOpInstruction statement_instruction;
         CompareInstruction compare_instruction;
@@ -393,17 +494,7 @@ int main(int argc, char* argv[])
         // Now perform the actual parsing
         preparse_begin = begin;
         if (parser.ParseLabel(begin, input_code.end(), &statement_label)) {
-            std::string label_symbol = statement_label;
-
-            auto it = std::find(symbol_table.begin(), symbol_table.end(), label_symbol);
-            if (it != symbol_table.end())
-                throw "Label \"" + label_symbol + "\" already defined in symbol table";
-
-            symbol_table.push_back(label_symbol);
-            uint32_t symbol_table_index = symbol_table.size() - 1;
-
-            CustomLabelInfo label_info = { program_write_offset, symbol_table_index };
-            label_table.push_back(label_info);
+            // Already handled above
         } else if (parser.ParseSimpleInstruction(begin, input_code.end(), &statement_simple)) {
             OpCode opcode = statement_simple;
 
@@ -796,7 +887,13 @@ int main(int argc, char* argv[])
 
                 assert(abstract_opcode == OpCode::Id::GEN_CALL);
 
-                // TODO: Set flow_control.num_instructions
+                unsigned target_address = LookupLableAddress(statement_flow_control.GetTargetLabel());
+                unsigned return_address = LookupLableAddress(statement_flow_control.GetReturnLabel());
+
+                if (return_address <= target_address)
+                    throw "Return address must be bigger than target address";
+
+                shinst.flow_control.num_instructions = return_address - target_address;
             } else {
                 if (abstract_opcode == OpCode::Id::GEN_CALL) {
                     throw "Must specify a return label for call. Use jmp instead if you don't need automatic function returning.";
@@ -807,8 +904,10 @@ int main(int argc, char* argv[])
                 call_stack.emplace(CallStackElement{abstract_opcode, (unsigned)instructions.size(), (unsigned)-1, (unsigned)-1});
             } else if (abstract_opcode == OpCode::Id::LOOP) {
                 call_stack.emplace(CallStackElement{abstract_opcode, (unsigned)instructions.size(), (unsigned)-1, (unsigned)-1});
+            } else if (abstract_opcode == OpCode::Id::BREAKC) {
+                // Do nothing
             } else {
-                // TODO: Set flow_control.dest_offset
+                shinst.flow_control.dest_offset = LookupLableAddress(statement_flow_control.GetTargetLabel());
             }
 
             instructions.push_back(shinst);

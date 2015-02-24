@@ -609,6 +609,10 @@ struct Parser::ParserImpl {
         } while (boost::spirit::qi::parse(begin, end, boost::spirit::qi::eol));
     }
 
+    void SkipSingleLine(Iterator& begin, Iterator end) {
+        qi::parse(begin, end, *(qi::char_ - (qi::eol | qi::eoi)) >> (qi::eol | qi::eoi));
+    }
+
     bool ParseLabel(Iterator& begin, Iterator end, StatementLabel* content) {
         assert(content != nullptr);
 
@@ -664,6 +668,10 @@ Parser::~Parser() {
 
 void Parser::Skip(Iterator& begin, Iterator end) {
     impl->Skip(begin, end);
+}
+
+void Parser::SkipSingleLine(Iterator& begin, Iterator end) {
+    impl->SkipSingleLine(begin, end);
 }
 
 bool Parser::ParseLabel(Iterator& begin, Iterator end, StatementLabel* label) {
