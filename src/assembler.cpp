@@ -102,6 +102,12 @@ struct Atomic {
         else if (register_index >= (int)RegisterSpace::Input)
             return register_index - (int)RegisterSpace::Input;
     }
+
+    // Returns whether this is a float uniform register OR uses relative addressing
+    bool IsExtended() const {
+        return GetType() == RegisterType::FloatUniform ||
+               relative_address_source != 0;
+    }
 };
 
 // TODO: Support labels as identifiers...
@@ -487,10 +493,6 @@ int main(int argc, char* argv[])
                 throw "Specified register " + std::to_string((int)type) + " " + std::to_string(index) + " is not writeable (only output and temporary registers are writeable)";
         };
 
-        static auto IsFloatInput = [](const Atomic& src) {
-            return src.GetType() == RegisterType::FloatUniform;
-        };
-
         // Now perform the actual parsing
         preparse_begin = begin;
         if (parser.ParseLabel(begin, input_code.end(), &statement_label)) {
@@ -592,10 +594,13 @@ int main(int argc, char* argv[])
             }
 
             int num_args = args.size();
-            const OpCode opcode = shinst.opcode.Value();
+            OpCode opcode = shinst.opcode.Value();
             switch (opcode.GetInfo().type) {
                 case OpCode::Type::Arithmetic:
                 {
+                    if (opcode == OpCode::Id::MAD || opcode == OpCode::Id::MOVA)
+                        throw "MAD and MOVA are not supported, yet";
+
                     const int num_inputs = opcode.GetInfo().NumArguments() - 1;
 
                     AssertRegisterWriteable(arguments[0].GetType(), arguments[0].GetIndex());
@@ -606,36 +611,84 @@ int main(int argc, char* argv[])
                     InputSwizzlerMask input_mask_src1;
                     InputSwizzlerMask input_mask_src2;
 
+                    bool inverse_instruction_format = false;
+
                     // Make sure not more than one float uniform is used, and move it to src1 if need be
                     if (num_inputs > 1) {
                         AssertRegisterReadable(arguments[2].GetType());
 
-                        if (boost::count_if(arguments | boost::adaptors::sliced(1,3), IsFloatInput) == 2) {
-                            throw "Not more than one input register may be a floating point uniform";
+                        if (boost::count_if(arguments | boost::adaptors::sliced(1,3), [](const Atomic& a) { return a.IsExtended(); }) == 2) {
+                            throw "Not more than one input register may be a floating point uniform and/or use dynamic indexing";
                         }
 
                         // If second argument is a floating point register, swap it to first place
-                        // TODO: Only do this for commutative operations, and switch to the inverse version otherwise.
-                        if (arguments[2].GetType() == RegisterType::FloatUniform) {
-                            boost::swap(arguments[1], arguments[2]);
+                        if (arguments[2].IsExtended()) {
+                            switch (opcode) {
+                            case OpCode::Id::ADD:
+                            case OpCode::Id::DP3:
+                            case OpCode::Id::DP4:
+                            case OpCode::Id::MUL:
+                            case OpCode::Id::MAX:
+                            case OpCode::Id::MIN:
+                                // Commutative operation, so just exchange arguments
+                                boost::swap(arguments[1], arguments[2]);
+                                break;
+
+                            case OpCode::Id::MAD:
+                                // Commutative in first two arguments, so just exchange arguments
+                                boost::swap(arguments[1], arguments[2]);
+                                break;
+
+                            case OpCode::Id::DPH:
+                                opcode = OpCode::Id::DPHI;
+                                inverse_instruction_format = true;
+                                break;
+
+                            case OpCode::Id::SGE:
+                                opcode = OpCode::Id::SGEI;
+                                inverse_instruction_format = true;
+                                break;
+
+                            case OpCode::Id::SLT:
+                                opcode = OpCode::Id::SLTI;
+                                inverse_instruction_format = true;
+                                break;
+
+                            default:
+                                throw "This opcode is not supported with a float uniform in second place. Change your code to put the float uniform in the first place, instead.";
+                            }
                         }
 
-                        shinst.common.src2 = SourceRegister::FromTypeAndIndex(arguments[2].GetType(), arguments[2].GetIndex());
+                        if (inverse_instruction_format) {
+                            shinst.common.src2i = SourceRegister::FromTypeAndIndex(arguments[2].GetType(), arguments[2].GetIndex());
+                        } else {
+                            shinst.common.src2 = SourceRegister::FromTypeAndIndex(arguments[2].GetType(), arguments[2].GetIndex());
+                        }
                         input_mask_src2 = arguments[2].mask;
                     }
 
                     input_mask_src1 = arguments[1].mask;
 
                     shinst.common.dest = DestRegister::FromTypeAndIndex(arguments[0].GetType(), arguments[0].GetIndex());
-                    shinst.common.src1 = SourceRegister::FromTypeAndIndex(arguments[1].GetType(), arguments[1].GetIndex());
+                    if (inverse_instruction_format) {
+                        shinst.common.src1i = SourceRegister::FromTypeAndIndex(arguments[1].GetType(), arguments[1].GetIndex());
+                    } else {
+                        shinst.common.src1  = SourceRegister::FromTypeAndIndex(arguments[1].GetType(), arguments[1].GetIndex());
+                    }
+
+                    shinst.common.address_register_index = (inverse_instruction_format)
+                                                            ? arguments[2].relative_address_source
+                                                            : arguments[1].relative_address_source;
 
                     const bool is_dot_product = (opcode == OpCode::Id::DP3 ||
-                                                 opcode == OpCode::Id::DP4);
+                                                 opcode == OpCode::Id::DP4 ||
+                                                 opcode == OpCode::Id::DPH);
 
                     if (is_dot_product) {
-                        int expected_input_length = (opcode == OpCode::Id::DP3) ? 3 : 4;
-                        if (input_mask_src1.num_components != expected_input_length ||
-                            input_mask_src2.num_components != expected_input_length)
+                        int expected_input_length1 = (opcode == OpCode::Id::DP3) ? 3 : 4;
+                        int expected_input_length2 = (opcode == OpCode::Id::DP4) ? 4 : 3;
+                        if (input_mask_src1.num_components != expected_input_length1 ||
+                            input_mask_src2.num_components != expected_input_length2)
                             throw "Input registers for dot product instructions need to use proper number of components";
 
                         // NOTE: dest can use any number of components for dot products
@@ -691,15 +744,32 @@ int main(int argc, char* argv[])
             InputSwizzlerMask input_mask_src2;
 
             // Make sure not more than one float uniform is used, and move it to src1 if need be
-            if (boost::count_if(std::initializer_list<Atomic>{src1, src2}, IsFloatInput) == 2) {
-                throw "Not more than one input register may be a floating point uniform";
+            if (boost::count_if(std::initializer_list<Atomic>{src1, src2}, [](const Atomic& a) { return a.IsExtended(); }) == 2) {
+                throw "Not more than one input register may be a floating point uniform and/or use dynamic indexing.";
             }
 
-            // If second argument is a floating point register, swap it to first place
-            if (src2.GetType() == RegisterType::FloatUniform) {
+            // If second argument is a floating point register, swap it to first place and invert the compare mode
+            if (src2.IsExtended()) {
+                using OpType = Instruction::Common::CompareOpType;
+                static auto InvertCompareMode = [](OpType::Op op) {
+                    if (op == OpType::LessThan)
+                        return OpType::GreaterThan;
+                    else if (op == OpType::LessEqual)
+                        return OpType::GreaterEqual;
+                    else if (op == OpType::GreaterThan)
+                        return OpType::LessThan;
+                    else if (op == OpType::GreaterEqual)
+                        return OpType::LessEqual;
+                    else
+                        return op;
+                };
+                shinst.common.compare_op.x = InvertCompareMode(compare_instruction.GetOp1());
+                shinst.common.compare_op.y = InvertCompareMode(compare_instruction.GetOp2());
+
                 boost::swap(src1, src2);
-                // TODO: Inverse operation if necessary!
-                throw "Unsupported setup: Second argument is a float uniform, but only the first may be one. Please manually move the float uniform to the first argument slot. Future assembler versions will do this automatically for you.";
+            } else {
+                shinst.common.compare_op.x = compare_instruction.GetOp1();
+                shinst.common.compare_op.y = compare_instruction.GetOp2();
             }
 
             shinst.common.src1 = SourceRegister::FromTypeAndIndex(src1.GetType(), src1.GetIndex());
@@ -707,14 +777,13 @@ int main(int argc, char* argv[])
             input_mask_src1 = src1.mask;
             input_mask_src2 = src2.mask;
 
+            shinst.common.address_register_index = src1.relative_address_source;
+
             if (input_mask_src1.num_components != 2 || input_mask_src2.num_components != 2) {
                 throw "Arguments need to have exactly two active components!"
                       + std::string("src1: ") + std::to_string(input_mask_src1.num_components) + " components, "
                       + std::string("src2: ") + std::to_string(input_mask_src2.num_components) + " components)";
             }
-
-            shinst.common.compare_op.x = compare_instruction.GetOp1();
-            shinst.common.compare_op.y = compare_instruction.GetOp2();
 
             // Build swizzle patterns
             SourceSwizzlerMask mask_src1;
