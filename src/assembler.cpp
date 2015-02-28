@@ -40,6 +40,8 @@
 #include "nihstro/shader_binary.h"
 #include "nihstro/shader_bytecode.h"
 
+#include "nihstro/float24.h"
+
 using namespace nihstro;
 
 enum class RegisterSpace : int {
@@ -201,7 +203,7 @@ static Atomic EvaluateExpression(const Expression& expr) {
                     ret.relative_address_source > (int)RegisterSpace::AddressEnd) {
                     throw "Invalid register " + std::to_string(array_index_expression.GetAddressRegisterIdentifier(i))+ " " + std::to_string(ret.relative_address_source) + " used for relative addressing (only a0, a1 and lcnt are valid indexes)";
                 }
-                ret.relative_address_source -= (int)RegisterSpace::Address;
+                ret.relative_address_source -= (int)RegisterSpace::Address - 1; // 0 is reserved for "no dynamic indexing", hence the first address register gets value 1
                 relative_address_set = true;
             }
         }
@@ -328,6 +330,9 @@ int main(int argc, char* argv[])
     std::vector<CustomLabelInfo> label_table;
 
     std::vector<std::string> symbol_table;
+    std::vector<OutputRegisterInfo> output_table;
+    std::vector<ConstantInfo> constant_table;
+    std::vector<UniformInfo> uniform_table;
 
     uint32_t program_write_offset = 0;
 
@@ -463,10 +468,6 @@ int main(int argc, char* argv[])
             parser.SkipSingleLine(begin, input_code.end());
         }
     }
-
-    for (auto& label : symbol_table)
-        std::cout << label << " -> " << LookupLableAddress(label) << std::endl;
-    std::cout << std::endl;
 
     begin = input_code.begin();
 
@@ -991,24 +992,50 @@ int main(int argc, char* argv[])
             std::string idname;
 
             if (var.which() == 0) {
+                // TODO: Support non-float constants
+
                 auto& var2 = boost::get<DeclarationConstant>(var);
                 id = boost::fusion::at_c<1>(var2);
                 idname = boost::fusion::at_c<0>(var2);
+                std::vector<float> values = boost::fusion::at_c<2>(var2);
 
-                // TODO: Add to constant table
+                ConstantInfo constant;
+                constant.type = ConstantInfo::Float;
+                constant.regid = identifiers[id].GetIndex();
+
+                constant.f.x = to_float24(values[0]);
+                constant.f.y = to_float24(values[1]);
+                constant.f.z = to_float24(values[2]);
+                constant.f.w = to_float24(values[3]);
+
+                constant_table.push_back(constant);
+
             } else if (var.which() == 1) {
                 auto& var2 = boost::get<DeclarationOutput>(var);
                 id = boost::fusion::at_c<1>(var2);
                 idname = boost::fusion::at_c<0>(var2);
 
-                // TODO: Add to output table
                 // TODO: Make sure the declared output actually gets set (otherwise the GPU freezes)
+
+                OutputRegisterInfo output;
+                output.type = boost::fusion::at_c<2>(var2);
+                output.id = identifiers[id].GetIndex();
+                output.component_mask = 0xF; // TODO: Make configurable
+                output_table.push_back(output);
+
             } else if (var.which() == 2) {
                 auto& var2 = boost::get<DeclarationAlias>(var);
                 id = boost::fusion::at_c<1>(var2);
                 idname = boost::fusion::at_c<0>(var2);
 
-                // TODO: Add to uniform table
+                UniformInfo uniform;
+                uniform.basic.symbol_offset = [&]() { size_t ret = 0; for (auto& s : symbol_table) { ret +=s.length()+1; } return ret;}();
+                uniform.basic.reg_start = identifiers[id].GetIndex() + 16; // TODO: Hardcoded against float uniforms
+                uniform.basic.reg_end = identifiers[id].GetIndex() + 16;  // TODO: Ranges not supported
+                uniform_table.push_back(uniform);
+
+                symbol_table.push_back(idname);
+
             } else {
                 // TODO: Better error handling..
                 throw "meh";
@@ -1089,6 +1116,28 @@ int main(int argc, char* argv[])
         QueueForWriting((uint8_t*)&swizzle_patterns[i], sizeof(swizzle_patterns[i]));
         QueueForWriting((uint8_t*)&dummy, sizeof(dummy));
     }
+
+    dvle.output_register_table_offset = write_offset - dvlb.dvle_offset;
+    dvle.output_register_table_size = output_table.size();
+    for (const auto& output : output_table) {
+        QueueForWriting((uint8_t*)&output, sizeof(output));
+    }
+
+    dvle.constant_table_offset = write_offset - dvlb.dvle_offset;
+    dvle.constant_table_size = constant_table.size();
+    for (const auto& constant : constant_table) {
+        QueueForWriting((uint8_t*)&constant, sizeof(constant));
+    }
+
+
+    // TODO: UniformTable spans more than the written data.. fix this design issue :/
+    // TODO: Is this TODO still valid?
+    dvle.uniform_table_offset = write_offset - dvlb.dvle_offset;
+    dvle.uniform_table_size = uniform_table.size();
+    for (const auto& uniform : uniform_table) {
+        QueueForWriting((uint8_t*)&reinterpret_cast<const uint64_t&>(uniform.basic), sizeof(uint64_t));
+    }
+
 
     dvle.main_offset_words = main_offset;
 
