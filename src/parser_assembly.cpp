@@ -149,6 +149,12 @@ struct CommonRules {
                      ( "xyw",  {3, {InputSwizzlerMask::x,InputSwizzlerMask::y,InputSwizzlerMask::w}} )
                      ( "xzw",  {3, {InputSwizzlerMask::x,InputSwizzlerMask::z,InputSwizzlerMask::w}} )
                      ( "yzw",  {3, {InputSwizzlerMask::y,InputSwizzlerMask::z,InputSwizzlerMask::w}} )
+                     ( "xxx",  {3, {InputSwizzlerMask::x,InputSwizzlerMask::x,InputSwizzlerMask::x}} )
+                     ( "yyy",  {3, {InputSwizzlerMask::y,InputSwizzlerMask::y,InputSwizzlerMask::y}} )
+                     ( "zzz",  {3, {InputSwizzlerMask::z,InputSwizzlerMask::z,InputSwizzlerMask::z}} )
+                     ( "www",  {3, {InputSwizzlerMask::w,InputSwizzlerMask::w,InputSwizzlerMask::w}} )
+                     ( "yyyw", {4, {InputSwizzlerMask::y,InputSwizzlerMask::y,InputSwizzlerMask::y,InputSwizzlerMask::w}} )
+                     ( "wwww", {4, {InputSwizzlerMask::w,InputSwizzlerMask::w,InputSwizzlerMask::w,InputSwizzlerMask::w}} )
                      ( "xyzw", {4, {InputSwizzlerMask::x,InputSwizzlerMask::y,InputSwizzlerMask::z,InputSwizzlerMask::w}} );
         swizzle_mask = qi::lexeme[swizzlers];
 
@@ -564,20 +570,39 @@ struct DeclarationParser : qi::grammar<Iterator, StatementDeclaration(), Assembl
 
         auto comma_rule = qi::lit(',');
 
-        declaration_output = qi::omit[qi::lexeme["out" >> ascii::blank]] > identifier > context.identifiers > output_semantics;
-        declaration_constant = qi::omit[qi::lexeme["const "]] >> identifier > context.identifiers
-                               > (qi::repeat(1)[qi::float_]
+        alias_identifier = qi::omit[qi::lexeme["alias" >> ascii::blank]] > identifier;
+
+        // e.g. 5.4 or (1.1, 2, 3)
+        constant = (qi::repeat(1)[qi::float_]
                                   | (qi::lit('(') > (qi::float_ % qi::lit(',')) > qi::lit(')')));
-        declaration_alias = qi::omit[qi::lexeme["alias" >> ascii::blank]] > identifier > context.identifiers;
-        declaration = qi::lit('.') > (declaration_output | declaration_constant | declaration_alias);
+
+        auto dummy_const = qi::attr(std::vector<float>());
+        auto dummy_semantic = qi::attr(boost::optional<OutputRegisterInfo::Type>());
+
+        // match a constant or a semantic, and fill the respective other one with a dummy
+        const_or_semantic = (dummy_const >> output_semantics_rule) | (constant >> dummy_semantic);
+
+        auto declaration_begin = ((qi::lit('.') > alias_identifier) >> known_identifier);
+        auto string_as = qi::omit[qi::no_skip[ascii::blank >> qi::lit("as") >> ascii::blank]];
+        auto end = qi::eol | qi::eoi;
+
+        declaration = declaration_begin
+                       >> (
+                            (string_as > const_or_semantic)
+                            | (dummy_const >> dummy_semantic)
+                          )
+                       > end;
 
         // Error handling
-        output_semantics_rule.name("output semantic");
+        output_semantics_rule.name("output semantic after \"as\"");
+        alias_identifier.name("known preprocessor directive (i.e. alias).");
+        const_or_semantic.name("constant or semantic after \"as\"");
+        //end.name("end of instruction");
 
-        declaration_output.name("output");
-        declaration_constant.name("constant");
-        declaration_alias.name("alias");
-
+        BOOST_SPIRIT_DEBUG_NODE(output_semantics_rule);
+        BOOST_SPIRIT_DEBUG_NODE(constant);
+        BOOST_SPIRIT_DEBUG_NODE(alias_identifier);
+        BOOST_SPIRIT_DEBUG_NODE(const_or_semantic);
         BOOST_SPIRIT_DEBUG_NODE(declaration);
 
         qi::on_error<qi::fail>(declaration, error_handler(phoenix::ref(diagnostics), _1, _2, _3, _4));
@@ -593,11 +618,9 @@ struct DeclarationParser : qi::grammar<Iterator, StatementDeclaration(), Assembl
 
     // Building blocks
     qi::rule<Iterator, std::string(),             Skipper>& identifier;
-
-    // Compounds
-    qi::rule<Iterator, DeclarationConstant(),     Skipper> declaration_constant;
-    qi::rule<Iterator, DeclarationOutput(),       Skipper> declaration_output;
-    qi::rule<Iterator, DeclarationAlias(),        Skipper> declaration_alias;
+    qi::rule<Iterator, std::vector<float>(),      Skipper> constant;
+    qi::rule<Iterator, std::string(),             Skipper> alias_identifier;
+    qi::rule<Iterator, boost::fusion::vector<std::vector<float>, boost::optional<OutputRegisterInfo::Type>>(), Skipper> const_or_semantic;
 
     qi::rule<Iterator, StatementDeclaration(),    Skipper> declaration;
     Diagnostics diagnostics;
