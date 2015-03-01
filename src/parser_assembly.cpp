@@ -122,6 +122,35 @@ std::ostream& operator<<(std::ostream& os, const OpCode& opcode) {
 
 }
 
+/**
+ * Implementation of transform_attribute from std::vector<InputSwizzlerMask::Component> to InputSwizzlerMask.
+ * This eases swizzle mask parsing a lot.
+ */
+namespace boost { namespace spirit { namespace traits {
+template<>
+struct transform_attribute<InputSwizzlerMask, std::vector<InputSwizzlerMask::Component>, qi::domain>
+{
+    using Exposed = InputSwizzlerMask;
+
+    using type = std::vector<InputSwizzlerMask::Component>;
+
+    static void post(Exposed& val, const type& attr) {
+        val.num_components = attr.size();
+        for (int i = 0; i < attr.size(); ++i)
+            val.components[i] = attr[i];
+    }
+
+    static type pre(Exposed& val) {
+        type vec;
+        for (int i = 0; i < val.num_components; ++i)
+            vec.push_back(val.components[i]);
+        return vec;
+    }
+
+    static void fail(Exposed&) { }
+};
+}}} // namespaces
+
 template<typename Iterator>
 struct CommonRules {
     using Skipper = AssemblySkipper<Iterator>;
@@ -131,36 +160,21 @@ struct CommonRules {
         signs.add( "+", +1)
                  ( "-", -1);
 
-        // TODO: Might want to change to only have "x", "y", "z" and "w"
         // TODO: Add rgba/stq masks
-        // TODO: Support permutations of these
         swizzlers.add
-                     ( "x",    {1, {InputSwizzlerMask::x}} )
-                     ( "y",    {1, {InputSwizzlerMask::y}} )
-                     ( "z",    {1, {InputSwizzlerMask::z}} )
-                     ( "w",    {1, {InputSwizzlerMask::w}} )
-                     ( "xy",   {2, {InputSwizzlerMask::x,InputSwizzlerMask::y}} )
-                     ( "xz",   {2, {InputSwizzlerMask::x,InputSwizzlerMask::z}} )
-                     ( "xw",   {2, {InputSwizzlerMask::x,InputSwizzlerMask::w}} )
-                     ( "yz",   {2, {InputSwizzlerMask::y,InputSwizzlerMask::z}} )
-                     ( "yw",   {2, {InputSwizzlerMask::y,InputSwizzlerMask::w}} )
-                     ( "zw",   {2, {InputSwizzlerMask::z,InputSwizzlerMask::w}} )
-                     ( "xyz",  {3, {InputSwizzlerMask::x,InputSwizzlerMask::y,InputSwizzlerMask::z}} )
-                     ( "xyw",  {3, {InputSwizzlerMask::x,InputSwizzlerMask::y,InputSwizzlerMask::w}} )
-                     ( "xzw",  {3, {InputSwizzlerMask::x,InputSwizzlerMask::z,InputSwizzlerMask::w}} )
-                     ( "yzw",  {3, {InputSwizzlerMask::y,InputSwizzlerMask::z,InputSwizzlerMask::w}} )
-                     ( "xxx",  {3, {InputSwizzlerMask::x,InputSwizzlerMask::x,InputSwizzlerMask::x}} )
-                     ( "yyy",  {3, {InputSwizzlerMask::y,InputSwizzlerMask::y,InputSwizzlerMask::y}} )
-                     ( "zzz",  {3, {InputSwizzlerMask::z,InputSwizzlerMask::z,InputSwizzlerMask::z}} )
-                     ( "www",  {3, {InputSwizzlerMask::w,InputSwizzlerMask::w,InputSwizzlerMask::w}} )
-                     ( "yyyw", {4, {InputSwizzlerMask::y,InputSwizzlerMask::y,InputSwizzlerMask::y,InputSwizzlerMask::w}} )
-                     ( "wwww", {4, {InputSwizzlerMask::w,InputSwizzlerMask::w,InputSwizzlerMask::w,InputSwizzlerMask::w}} )
-                     ( "xyzw", {4, {InputSwizzlerMask::x,InputSwizzlerMask::y,InputSwizzlerMask::z,InputSwizzlerMask::w}} );
-        swizzle_mask = qi::lexeme[swizzlers];
+                     ( "x",    InputSwizzlerMask::x )
+                     ( "y",    InputSwizzlerMask::y )
+                     ( "z",    InputSwizzlerMask::z )
+                     ( "w",    InputSwizzlerMask::w );
 
-        // TODO: Something like test5bla should be allowed, too
-        identifier = qi::lexeme[+(qi::char_("a-zA-Z_")) >> -+qi::char_("0-9")];
-        known_identifier = qi::lexeme[context.identifiers];
+        // TODO: Make sure this is followed by a space or *some* separator
+        // TODO: Use qi::repeat(1,4)(swizzlers) instead of Kleene [failed to work when I tried, so make this work!]
+        // TODO: Use qi::lexeme[swizzlers] [crashed when I tried, so make this work!]
+        swizzle_mask = qi::attr_cast<InputSwizzlerMask, std::vector<InputSwizzlerMask::Component>>(*swizzlers);
+
+        auto identifier_atom = qi::char_("a-zA-Z0-9_");
+        identifier = qi::lexeme[qi::char_("a-zA-Z_") >> -+identifier_atom >> !identifier_atom];
+        known_identifier = qi::lexeme[context.identifiers >> !identifier_atom];
         peek_identifier = &identifier;
 
         uint_after_sign = qi::uint_; // TODO: NOT dot (or alphanum) after this to prevent floats..., TODO: overflows?
@@ -199,7 +213,7 @@ struct CommonRules {
 
     qi::symbols<char, int> signs;
 
-    qi::symbols<char, InputSwizzlerMask>          swizzlers;
+    qi::symbols<char, InputSwizzlerMask::Component>          swizzlers;
     qi::rule<Iterator, InputSwizzlerMask(),       Skipper> swizzle_mask;
 
     Diagnostics diagnostics;
@@ -584,7 +598,7 @@ struct DeclarationParser : qi::grammar<Iterator, StatementDeclaration(), Assembl
 
         auto declaration_begin = ((qi::lit('.') > alias_identifier) >> known_identifier);
         auto string_as = qi::omit[qi::no_skip[ascii::blank >> qi::lit("as") >> ascii::blank]];
-        auto end = qi::eol | qi::eoi;
+        end = qi::eol | qi::eoi;
 
         declaration = declaration_begin
                        >> (
@@ -597,7 +611,7 @@ struct DeclarationParser : qi::grammar<Iterator, StatementDeclaration(), Assembl
         output_semantics_rule.name("output semantic after \"as\"");
         alias_identifier.name("known preprocessor directive (i.e. alias).");
         const_or_semantic.name("constant or semantic after \"as\"");
-        //end.name("end of instruction");
+        end.name("end of instruction");
 
         BOOST_SPIRIT_DEBUG_NODE(output_semantics_rule);
         BOOST_SPIRIT_DEBUG_NODE(constant);
@@ -621,6 +635,7 @@ struct DeclarationParser : qi::grammar<Iterator, StatementDeclaration(), Assembl
     qi::rule<Iterator, std::vector<float>(),      Skipper> constant;
     qi::rule<Iterator, std::string(),             Skipper> alias_identifier;
     qi::rule<Iterator, boost::fusion::vector<std::vector<float>, boost::optional<OutputRegisterInfo::Type>>(), Skipper> const_or_semantic;
+    qi::rule<Iterator,                           Skipper> end;
 
     qi::rule<Iterator, StatementDeclaration(),    Skipper> declaration;
     Diagnostics diagnostics;
