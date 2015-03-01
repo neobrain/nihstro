@@ -1,12 +1,12 @@
 // setup constants
-.const myconst c32 (1.0, 0.0, 0.5, 1.0)
+.alias myconst c32 as (1.0, 0.0, 0.5, 1.0)
 
 // setup output map
-.out outpos  o0 position
-.out outcol  o1 color
-.out outtex0 o2 texcoord0
-.out outtex1 o3 texcoord1
-.out outtex2 o4 texcoord2
+.alias outpos  o0 as position
+.alias outcol  o1 as color
+.alias outtex0 o2 as texcoord0
+.alias outtex1 o3 as texcoord1
+.alias outtex2 o4 as texcoord2
 
 // setup uniform map, for use with SHDR_GetUniformRegister
 .alias projection     c0  // -c3
@@ -35,7 +35,7 @@ tex:  // result.texcoord = in.texcoord
 	mov outtex1,  c20.yyyw
 	mov outtex2,  c20.yyyw
 
-col:  // Hacky lighting: color = ambient + clamp(dot(L,N), 1.0) * ambient
+col:  // Hacky lighting: color = ambient.xyz + clamp(dot(L,N), 1.0) * ambient.www
 	dp3 r0.xyz,     lightDirection.xyz, v2.xyz
 	max r0.xyz,     myconst.yyy,        r0.xyz
 	mul r0.xyz,     lightAmbient.www,   r0.xyz
