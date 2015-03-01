@@ -444,21 +444,8 @@ int main(int argc, char* argv[])
             Identifier id;
             std::string idname;
 
-            if (var.which() == 0) {
-                auto& var2 = boost::get<DeclarationConstant>(var);
-                id = boost::fusion::at_c<1>(var2);
-                idname = boost::fusion::at_c<0>(var2);
-            } else if (var.which() == 1) {
-                auto& var2 = boost::get<DeclarationOutput>(var);
-                id = boost::fusion::at_c<1>(var2);
-                idname = boost::fusion::at_c<0>(var2);
-            } else if (var.which() == 2) {
-                auto& var2 = boost::get<DeclarationAlias>(var);
-                id = boost::fusion::at_c<1>(var2);
-                idname = boost::fusion::at_c<0>(var2);
-            } else {
-                throw "meh";
-            }
+            id = boost::fusion::at_c<1>(var);
+            idname = boost::fusion::at_c<0>(var);
 
             Atomic ret = identifiers[id];
             Identifier new_identifier = identifiers.size();
@@ -988,16 +975,14 @@ int main(int argc, char* argv[])
             // TODO: check if valid identifiers are passed as arguments.
             //       It e.g. shouldn't be possible to declare an input register as output.
 
-            Identifier id;
-            std::string idname;
+            Identifier id = boost::fusion::at_c<1>(var);
+            std::string idname = boost::fusion::at_c<0>(var);
 
-            if (var.which() == 0) {
+            std::vector<float>& values = boost::fusion::at_c<0>(boost::fusion::at_c<2>(var));
+            auto output_semantic = boost::fusion::at_c<1>(boost::fusion::at_c<2>(var));
+
+            if (values.size()) {
                 // TODO: Support non-float constants
-
-                auto& var2 = boost::get<DeclarationConstant>(var);
-                id = boost::fusion::at_c<1>(var2);
-                idname = boost::fusion::at_c<0>(var2);
-                std::vector<float> values = boost::fusion::at_c<2>(var2);
 
                 ConstantInfo constant;
                 constant.type = ConstantInfo::Float;
@@ -1010,23 +995,16 @@ int main(int argc, char* argv[])
 
                 constant_table.push_back(constant);
 
-            } else if (var.which() == 1) {
-                auto& var2 = boost::get<DeclarationOutput>(var);
-                id = boost::fusion::at_c<1>(var2);
-                idname = boost::fusion::at_c<0>(var2);
-
+            } else if (output_semantic) {
                 // TODO: Make sure the declared output actually gets set (otherwise the GPU freezes)
-
                 OutputRegisterInfo output;
-                output.type = boost::fusion::at_c<2>(var2);
+                output.type = *output_semantic;
                 output.id = identifiers[id].GetIndex();
                 output.component_mask = 0xF; // TODO: Make configurable
                 output_table.push_back(output);
 
-            } else if (var.which() == 2) {
-                auto& var2 = boost::get<DeclarationAlias>(var);
-                id = boost::fusion::at_c<1>(var2);
-                idname = boost::fusion::at_c<0>(var2);
+            } else {
+                // plain uniform
 
                 UniformInfo uniform;
                 uniform.basic.symbol_offset = [&]() { size_t ret = 0; for (auto& s : symbol_table) { ret +=s.length()+1; } return ret;}();
@@ -1036,9 +1014,6 @@ int main(int argc, char* argv[])
 
                 symbol_table.push_back(idname);
 
-            } else {
-                // TODO: Better error handling..
-                throw "meh";
             }
 
             Atomic ret = identifiers[id];

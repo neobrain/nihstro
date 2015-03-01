@@ -276,11 +276,9 @@ struct FlowControlInstruction : boost::fusion::vector<OpCode,
 
 };
 
-using DeclarationConstant = boost::fusion::vector<std::string, Identifier, std::vector<float>>;
-using DeclarationOutput   = boost::fusion::vector<std::string, Identifier, OutputRegisterInfo::Type>;
-using DeclarationAlias    = boost::fusion::vector<std::string, Identifier>;
+using StatementDeclaration = boost::fusion::vector<std::string, Identifier,
+                                                   boost::fusion::vector<std::vector<float>, boost::optional<OutputRegisterInfo::Type>>>;
 
-using StatementDeclaration = boost::variant<DeclarationConstant, DeclarationOutput, DeclarationAlias>;
 
 struct ParserContext {
     // Maps known identifiers to an index to the controller's identifier list
