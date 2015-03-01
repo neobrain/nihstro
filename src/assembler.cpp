@@ -972,17 +972,19 @@ int main(int argc, char* argv[])
         } else if (parser.ParseDeclaration(begin, input_code.end(), &statement_declaration)) {
             auto& var = statement_declaration;
 
-            // TODO: check if valid identifiers are passed as arguments.
-            //       It e.g. shouldn't be possible to declare an input register as output.
-
             Identifier id = boost::fusion::at_c<1>(var);
             std::string idname = boost::fusion::at_c<0>(var);
+            Atomic ret = identifiers[id];
 
             std::vector<float>& values = boost::fusion::at_c<0>(boost::fusion::at_c<2>(var));
             auto output_semantic = boost::fusion::at_c<1>(boost::fusion::at_c<2>(var));
 
+            // TODO: Make sure the symbol is not already defined
+
             if (values.size()) {
                 // TODO: Support non-float constants
+
+                // TODO: Make sure this is only called with registers for which it makes sense
 
                 ConstantInfo constant;
                 constant.type = ConstantInfo::Float;
@@ -996,6 +998,9 @@ int main(int argc, char* argv[])
                 constant_table.push_back(constant);
 
             } else if (output_semantic) {
+                if (ret.GetType() != RegisterType::Output)
+                    throw "May not assign semantics to non-output registers.";
+
                 // TODO: Make sure the declared output actually gets set (otherwise the GPU freezes)
                 OutputRegisterInfo output;
                 output.type = *output_semantic;
@@ -1016,7 +1021,6 @@ int main(int argc, char* argv[])
 
             }
 
-            Atomic ret = identifiers[id];
             Identifier new_identifier = identifiers.size();
             identifiers.push_back(ret);
             context.identifiers.add(idname, new_identifier);
