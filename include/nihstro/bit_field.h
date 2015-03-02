@@ -139,7 +139,10 @@ public:
     // we never use this inappropriate operator to begin with.
     // TODO: Implement this operator properly once all target compilers
     // support unrestricted unions.
-    BitField& operator=(const BitField&) = delete;
+    // TODO: Actually, deleting and overriding this operator both cause more
+    // harm than anything. Instead, it's suggested to never use the copy
+    // constructor directly but instead invoke Assign() explicitly.
+    // BitField& operator=(const BitField&) = delete;
 #endif
 
     __forceinline BitField& operator=(T val)
