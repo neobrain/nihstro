@@ -25,6 +25,7 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <iostream>
@@ -111,22 +112,41 @@ int main(int argc, char *argv[])
         auto& dvle_header = parser.dvle_headers[dvle_index];
         for (int i = 0; i < parser.shader_info.constant_table.size(); ++i) {
             auto& info = parser.shader_info.constant_table[i];
-            if (info.is_float32) {
-                std::cout << "Constant register info:  const" << info.regid.Value()
-                          << " = (" << *(float*)&info.x << ", " << *(float*)&info.y
-                          << ", " << *(float*)&info.z << ", " << *(float*)&info.w << ")"
+
+            switch (info.type) {
+            case ConstantInfo::Float:
+                std::cout << "Constant register info:  " << GetRegisterName(RegisterType::FloatUniform) << info.regid.Value()
+                          << " = (" << float24::FromRawFloat24(info.f.x).ToFloat32() << ", " << float24::FromRawFloat24(info.f.y).ToFloat32()
+                          << ", " << float24::FromRawFloat24(info.f.z).ToFloat32() << ", " << float24::FromRawFloat24(info.f.w).ToFloat32() << ")"
                           << "  (raw: 0x" << std::hex << std::setfill('0') << std::setw(8) << info.full_first_word
-                          << " 0x" << std::setw(8) << info.x << " 0x" << std::setw(8) << info.y
-                          << " 0x" << std::setw(8) << info.z << " 0x" << std::setw(8) << info.w << std::dec << std::setfill( ' ') << ")"
+                          << " 0x" << std::setw(8) << info.f.x << " 0x" << std::setw(8) << info.f.y
+                          << " 0x" << std::setw(8) << info.f.z << " 0x" << std::setw(8) << info.f.w << std::dec << std::setfill( ' ') << ")"
                           << std::endl;
-            } else {
-                std::cout << "Constant register info:  const" << info.regid.Value()
-                          << " = (" << float24::FromRawFloat24(info.x).ToFloat32() << ", " << float24::FromRawFloat24(info.y).ToFloat32()
-                          << ", " << float24::FromRawFloat24(info.z).ToFloat32() << ", " << float24::FromRawFloat24(info.w).ToFloat32() << ")"
+                break;
+
+            case ConstantInfo::Int:
+                std::cout << "Constant register info:  " << GetRegisterName(RegisterType::IntUniform) << info.regid.Value()
+                          << " = (" << (int)info.i.x << ", " << (int)info.i.y
+                          << ", " << (int)info.i.z << ", " << (int)info.i.w << ")"
                           << "  (raw: 0x" << std::hex << std::setfill('0') << std::setw(8) << info.full_first_word
-                          << " 0x" << std::setw(8) << info.x << " 0x" << std::setw(8) << info.y
-                          << " 0x" << std::setw(8) << info.z << " 0x" << std::setw(8) << info.w << std::dec << std::setfill( ' ') << ")"
+                          << std::dec << std::setfill( ' ') << ")"
                           << std::endl;
+                break;
+
+            case ConstantInfo::Bool:
+                std::cout << "Constant register info:  " << GetRegisterName(RegisterType::BoolUniform) << info.regid.Value()
+                          << " = " << std::boolalpha << (bool)info.b
+                          << "  (raw: 0x" << std::hex << std::setfill('0') << std::setw(8) << info.full_first_word
+                          << std::dec << std::setfill( ' ') << ")"
+                          << std::endl;
+                break;
+
+            default:
+            {
+                std::stringstream str("Unknown constant type: ");
+                str << std::hex << info.type.Value();
+                throw str.str();
+            }
             }
         }
 
@@ -138,12 +158,26 @@ int main(int argc, char *argv[])
         }
 
         for (auto& info : parser.shader_info.output_register_info)
-            std::cout << "Output register info:  o" << info.id.Value() << " = " << std::setw(13) << info.GetFullName() << " (" << std::hex << std::setw(16) << std::setfill('0') << (uint64_t)info.hex << std::setfill(' ') << ")" << std::endl;
+            std::cout << "Output register info:  " << GetRegisterName(RegisterType::Output) << info.id.Value() << '.' << std::setw(4) << std::left << info.GetMask()
+                      << " as " << std::setw(8) << info.GetSemanticName()
+                      << " (" << std::hex << std::setw(16) << std::setfill('0') << (uint64_t)info.hex << std::setfill(' ') << ")" << std::endl;
 
-        for (auto& uniform_info : parser.shader_info.uniform_table)
-//            std::cout << "Found uniform symbol \"" << std::setw(20) << uniform_info.name << "\" for registers 0x" << std::setfill('0') << std::setw(2) << uniform_info.basic.reg_start << "-0x" << std::setw(2) << uniform_info.basic.reg_end << " at offset 0x" << std::hex << symbol_table_offset + uniform_info.basic.symbol_offset << std::setfill(' ') << std::endl;
-            std::cout << "Found uniform symbol \"" << std::setw(20) << uniform_info.name << "\" for registers 0x" << std::setfill('0') << std::setw(2) << uniform_info.basic.reg_start << "-0x" << std::setw(2) << uniform_info.basic.reg_end << std::setfill(' ') << std::endl;
+        size_t max_uniform_name_length = [&]() {
+            return std::max_element(parser.shader_info.uniform_table.begin(), parser.shader_info.uniform_table.end(),
+                                    [](const UniformInfo& i1, UniformInfo& i2) { return i1.name.length() < i2.name.length(); }
+                                   )->name.length();
+        }();
+        for (auto& uniform_info : parser.shader_info.uniform_table) {
+            bool is_range = (uniform_info.basic.reg_start != uniform_info.basic.reg_end);
 
+            std::cout << "Found uniform symbol \"" << std::setw(max_uniform_name_length) << uniform_info.name
+                      << "\" for register" << (is_range ? "s " : "  ") << std::dec
+                      << GetRegisterName(uniform_info.basic.GetStartType()) << uniform_info.basic.GetStartIndex();
+            if (is_range)
+                std::cout << "-" << GetRegisterName(uniform_info.basic.GetEndType()) << uniform_info.basic.GetEndIndex();
+
+            std::cout << std::endl;
+        }
 
 // TODO:
 //        std::cout << "Disassembling " << parser.GetDVLPHeader().binary_size_words << " bytes from offset "

@@ -53,7 +53,7 @@ void ShbinParser::ReadHeaders(const std::string& filename) {
     file.read((char*)&dvlp_header, sizeof(dvlp_header));
     if (dvlp_header.magic_word != DVLPHeader::MAGIC_WORD) {
         std::stringstream stream;
-        stream << "Wrong DVLP magic word: Got " << std::hex << dvlp_header.magic_word;
+        stream << "Wrong DVLP magic word at offset " << std::hex << dvlp_offset << ": Got " << std::hex << dvlp_header.magic_word;
         throw stream.str();
     }
 
