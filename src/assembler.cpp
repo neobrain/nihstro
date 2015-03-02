@@ -975,9 +975,10 @@ int main(int argc, char* argv[])
             Identifier id = boost::fusion::at_c<1>(var);
             std::string idname = boost::fusion::at_c<0>(var);
             Atomic ret = identifiers[id];
+            ret.mask = (boost::fusion::at_c<2>(var)) ? *boost::fusion::at_c<2>(var) : InputSwizzlerMask::FullMask();
 
-            std::vector<float>& values = boost::fusion::at_c<0>(boost::fusion::at_c<2>(var));
-            auto output_semantic = boost::fusion::at_c<1>(boost::fusion::at_c<2>(var));
+            std::vector<float>& values = boost::fusion::at_c<0>(boost::fusion::at_c<3>(var));
+            auto output_semantic = boost::fusion::at_c<1>(boost::fusion::at_c<3>(var));
 
             // TODO: Make sure the symbol is not already defined
 
@@ -1002,10 +1003,18 @@ int main(int argc, char* argv[])
                     throw "May not assign semantics to non-output registers.";
 
                 // TODO: Make sure the declared output actually gets set (otherwise the GPU freezes)
+                // TODO: Make sure the input swizzle mask is valid (e.g. not ".yx")
+
                 OutputRegisterInfo output;
                 output.type = *output_semantic;
                 output.id = identifiers[id].GetIndex();
-                output.component_mask = 0xF; // TODO: Make configurable
+                output.component_mask = 0;
+                for (auto comp : ret.mask.components) {
+                    output.component_mask = output.component_mask | ((comp == InputSwizzlerMask::x) ? 1 :
+                                                                     (comp == InputSwizzlerMask::y) ? 2 :
+                                                                     (comp == InputSwizzlerMask::z) ? 4 :
+                                                                     (comp == InputSwizzlerMask::w) ? 8 : 0);
+                }
                 output_table.push_back(output);
 
             } else {

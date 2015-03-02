@@ -276,7 +276,7 @@ struct FlowControlInstruction : boost::fusion::vector<OpCode,
 
 };
 
-using StatementDeclaration = boost::fusion::vector<std::string, Identifier,
+using StatementDeclaration = boost::fusion::vector<std::string, Identifier, boost::optional<InputSwizzlerMask>,
                                                    boost::fusion::vector<std::vector<float>, boost::optional<OutputRegisterInfo::Type>>>;
 
 

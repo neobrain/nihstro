@@ -570,7 +570,8 @@ struct DeclarationParser : qi::grammar<Iterator, StatementDeclaration(), Assembl
     DeclarationParser(const ParserContext& context)
                 : DeclarationParser::base_type(declaration),
                   common(context), known_identifier(common.known_identifier),
-                  identifier(common.identifier), diagnostics(common.diagnostics) {
+                  identifier(common.identifier), swizzle_mask(common.swizzle_mask),
+                  diagnostics(common.diagnostics) {
 
         // Setup symbol table
         output_semantics.add("position", OutputRegisterInfo::POSITION);
@@ -596,8 +597,11 @@ struct DeclarationParser : qi::grammar<Iterator, StatementDeclaration(), Assembl
         // match a constant or a semantic, and fill the respective other one with a dummy
         const_or_semantic = (dummy_const >> output_semantics_rule) | (constant >> dummy_semantic);
 
-        auto declaration_begin = ((qi::lit('.') > alias_identifier) >> known_identifier);
-        auto string_as = qi::omit[qi::no_skip[ascii::blank >> qi::lit("as") >> ascii::blank]];
+        auto declaration_begin = ((qi::lit('.') > alias_identifier) >> known_identifier >> -(qi::lit('.') > swizzle_mask));
+
+        // TODO: Would like to use +ascii::blank instead, but somehow that fails to parse lines like ".alias name o2.xy texcoord0" correctly
+        auto string_as = qi::omit[qi::no_skip[*/*+*/ascii::blank >> qi::lit("as") >> +ascii::blank]];
+
         end = qi::eol | qi::eoi;
 
         declaration = declaration_begin
@@ -632,6 +636,7 @@ struct DeclarationParser : qi::grammar<Iterator, StatementDeclaration(), Assembl
 
     // Building blocks
     qi::rule<Iterator, std::string(),             Skipper>& identifier;
+    qi::rule<Iterator, InputSwizzlerMask(),       Skipper>& swizzle_mask;
     qi::rule<Iterator, std::vector<float>(),      Skipper> constant;
     qi::rule<Iterator, std::string(),             Skipper> alias_identifier;
     qi::rule<Iterator, boost::fusion::vector<std::vector<float>, boost::optional<OutputRegisterInfo::Type>>(), Skipper> const_or_semantic;
