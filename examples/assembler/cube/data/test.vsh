@@ -2,11 +2,11 @@
 .alias myconst c32 as (1.0, 0.0, 0.5, 1.0)
 
 // setup output map
-.alias outpos  o0 as position
-.alias outcol  o1 as color
-.alias outtex0 o2 as texcoord0
-.alias outtex1 o3 as texcoord1
-.alias outtex2 o4 as texcoord2
+.alias outpos  o0    as position
+.alias outcol  o1    as color
+.alias outtex0 o2.xy as texcoord0
+.alias outtex1 o3.xy as texcoord1
+.alias outtex2 o4.xy as texcoord2
 
 // setup uniform map, for use with SHDR_GetUniformRegister
 .alias projection     c0  // -c3
