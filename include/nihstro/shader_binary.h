@@ -147,7 +147,6 @@ struct ConstantInfo {
         uint32_t full_first_word;
     };
 
-    // float24 values..
     union {
         BitField<0, 1, uint32_t> b;
 
@@ -169,8 +168,8 @@ struct ConstantInfo {
 };
 
 struct LabelInfo {
-    LabelInfo() = default;
-    LabelInfo(const LabelInfo&) = default;
+//    LabelInfo() = default;
+//    LabelInfo(const LabelInfo&) = default;
 
     BitField<0, 8, uint32_t> id;
     uint32_t program_offset;
@@ -208,7 +207,7 @@ union OutputRegisterInfo {
         return ret;
     }
 
-    std::string GetPlainName() const {
+    std::string GetSemanticName() const {
         std::map<Type, std::string> map = {
             { POSITION,  "out.pos"},
             { COLOR,     "out.col"},
@@ -222,10 +221,6 @@ union OutputRegisterInfo {
         else
             return "out.unk";
     }
-
-    std::string GetFullName() const {
-        return GetPlainName() + "." + GetMask();
-    }
 };
 
 struct UniformInfo {
@@ -237,6 +232,40 @@ struct UniformInfo {
     }
 
     struct {
+        static RegisterType GetType(uint32_t reg) {
+            if (reg < 0x10) return RegisterType::Input;
+            else if (reg < 0x70) return RegisterType::FloatUniform;
+            else if (reg < 0x74) return RegisterType::IntUniform;
+            else if (reg >= 0x78 && reg < 0x88) return RegisterType::BoolUniform;
+            else return RegisterType::Unknown;
+        }
+
+        static int GetIndex(uint32_t reg) {
+            switch (GetType(reg)) {
+            case RegisterType::Input: return reg;
+            case RegisterType::FloatUniform: return reg - 0x10;
+            case RegisterType::IntUniform: return reg - 0x70;
+            case RegisterType::BoolUniform: return reg - 0x78;
+            default: return -1;
+            }
+        }
+
+        RegisterType GetStartType() const {
+            return GetType(reg_start);
+        }
+
+        RegisterType GetEndType() const {
+            return GetType(reg_end);
+        }
+
+        int GetStartIndex() const {
+            return GetIndex(reg_start);
+        }
+
+        int GetEndIndex() const {
+            return GetIndex(reg_end);
+        }
+
         uint32_t symbol_offset;
         union {
             BitField< 0, 16, uint32_t> reg_start;

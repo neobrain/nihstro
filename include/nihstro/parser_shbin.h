@@ -93,7 +93,7 @@ struct ShaderInfo {
                 if (!ret.empty())
                     ret += "|";
 
-                ret += output_info.GetFullName();
+                ret += output_info.GetSemanticName();
             }
             if (!ret.empty())
                 return ret;

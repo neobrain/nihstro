@@ -982,10 +982,17 @@ int main(int argc, char* argv[])
 
             // TODO: Make sure the symbol is not already defined
 
+            // TODO: Support not specifying any uniform name
+
+            // TODO: Warn if an alias is created for an output register without assigning a semantic
+
             if (values.size()) {
                 // TODO: Support non-float constants
 
                 // TODO: Make sure this is only called with registers for which it makes sense
+
+                // TODO: No swizzle mask may be used here.
+                // TODO: Number of given components must be the number of components in the given register
 
                 ConstantInfo constant;
                 constant.type = ConstantInfo::Float;
