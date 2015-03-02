@@ -113,26 +113,6 @@ struct SwizzleInfo {
 };
 
 struct ConstantInfo {
-
-    ConstantInfo() = default;
-
-    ConstantInfo(const ConstantInfo& oth) {
-        full_first_word = oth.full_first_word;
-        f.x = oth.f.x;
-        f.y = oth.f.y;
-        f.z = oth.f.z;
-        f.w = oth.f.w;
-	}
-
-    ConstantInfo& operator =(const ConstantInfo& oth) {
-        full_first_word = oth.full_first_word;
-        f.x = oth.f.x;
-        f.y = oth.f.y;
-        f.z = oth.f.z;
-        f.w = oth.f.w;
-        return *this;
-    }
-
     enum Type : uint32_t {
         Bool  = 0,
         Int   = 1,
@@ -168,9 +148,6 @@ struct ConstantInfo {
 };
 
 struct LabelInfo {
-//    LabelInfo() = default;
-//    LabelInfo(const LabelInfo&) = default;
-
     BitField<0, 8, uint32_t> id;
     uint32_t program_offset;
     uint32_t unk;
@@ -224,13 +201,6 @@ union OutputRegisterInfo {
 };
 
 struct UniformInfo {
-    UniformInfo& operator=(const UniformInfo& oth) {
-        basic.symbol_offset = oth.basic.symbol_offset;
-        basic.reg_start.Assign(oth.basic.reg_start);
-        basic.reg_end.Assign(oth.basic.reg_end);
-        name = oth.name;
-    }
-
     struct {
         static RegisterType GetType(uint32_t reg) {
             if (reg < 0x10) return RegisterType::Input;
