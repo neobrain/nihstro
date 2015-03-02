@@ -33,48 +33,11 @@
 #include <vector>
 
 #include "bit_field.h"
+#include "float24.h"
 #include "shader_binary.h"
 #include "shader_bytecode.h"
 
 namespace nihstro {
-
-static auto to_float24 = [](float val) {
-    static_assert(std::numeric_limits<float>::is_iec559, "Compiler does not adhere to IEEE 754");
-
-    union Float32 {
-        BitField< 0, 23, uint32_t> mant;
-        BitField<23,  8, uint32_t> biased_exp;
-        BitField<31,  1, uint32_t> sign;
-
-        static int ExponentBias() {
-            return 127;
-        }
-    } f32 = reinterpret_cast<Float32&>(val);
-
-    union Float24 {
-        uint32_t hex;
-
-        BitField< 0, 16, uint32_t> mant;
-        BitField<16,  7, uint32_t> biased_exp;
-        BitField<23,  1, uint32_t> sign;
-
-        static int ExponentBias() {
-            return 63;
-        }
-    } f24 = { 0 };
-
-    int biased_exp = (int)f32.biased_exp - Float32::ExponentBias() + Float24::ExponentBias();
-    unsigned mant = (biased_exp >= 0) ? (f32.mant >> (f32.mant.NumBits() - f24.mant.NumBits())) : 0;
-    if (biased_exp >= (1 << f24.biased_exp.NumBits())) {
-        // TODO: Return +inf or -inf
-    }
-
-    f24.biased_exp = std::max(0, biased_exp);
-    f24.mant = mant;
-    f24.sign = f32.sign.Value();
-
-    return f24.hex;
-};
 
 struct ShaderBinary {
     std::vector<Instruction> program;
@@ -94,6 +57,13 @@ struct DestRegisterOrTemporary : public DestRegister {
 };
 
 struct InlineAsm {
+    enum RelativeAddress {
+        None,
+        A1,
+        A2,
+        AL
+    };
+
     struct DestMask {
         DestMask(const std::string& mask) {
             static const std::map<std::string,uint32_t> valid_masks {
@@ -180,6 +150,22 @@ struct InlineAsm {
         full_instruction.instr.opcode = opcode;
     }
 
+    InlineAsm(OpCode opcode, int src) : type(Regular) {
+        switch (opcode.EffectiveOpCode()) {
+        case OpCode::Id::LOOP:
+//            if (src.GetRegisterType() != RegisterType::IntUniform)
+//                throw "LOOP argument must be an integer register!";
+
+            reg_id = src;
+            full_instruction.instr.hex = 0;
+            full_instruction.instr.opcode = opcode;
+            break;
+
+        default:
+            throw "Unknown opcode argument";
+        }
+    }
+
     InlineAsm(OpCode opcode, DestRegisterOrTemporary dest, const DestMask& dest_mask,
               SourceRegister src1, const SwizzleMask swizzle_src1 = SwizzleMask{""}) : type(Regular) {
         Instruction& instr = full_instruction.instr;
@@ -208,7 +194,7 @@ struct InlineAsm {
 
     InlineAsm(OpCode opcode, DestRegisterOrTemporary dest, const DestMask& dest_mask,
               SourceRegister src1, const SwizzleMask& swizzle_src1,
-              SourceRegister src2, const SwizzleMask& swizzle_src2 = "") : type(Regular) {
+              SourceRegister src2, const SwizzleMask& swizzle_src2 = "", RelativeAddress addr = None) : type(Regular) {
         Instruction& instr = full_instruction.instr;
         instr.hex = 0;
         instr.opcode = opcode;
@@ -221,6 +207,7 @@ struct InlineAsm {
             instr.common.dest = dest;
             instr.common.src1 = src1;
             instr.common.src2 = src2;
+            instr.common.address_register_index = addr;
             swizzle.negate_src1 = swizzle_src1.negate;
             swizzle.negate_src2 = swizzle_src2.negate;
 
@@ -368,10 +355,12 @@ struct InlineAsm {
         return ret;
     }
 
-    static const ShaderBinary CompileToRawBinary(std::initializer_list<InlineAsm> code) {
+    static const ShaderBinary CompileToRawBinary(std::initializer_list<InlineAsm> code_) {
         ShaderBinary binary;
-        int index = 0;
-        for (auto command : code) {
+        std::vector<InlineAsm> code(code_);
+        for (int i = 0; i < code.size(); ++i) {
+            auto command = code[i];
+
             switch (command.type) {
             case Regular:
             {
@@ -383,6 +372,30 @@ struct InlineAsm {
 
                 case OpCode::Type::Arithmetic:
                     instr.common.operand_desc_id = FindSwizzlePattern(command.full_instruction.swizzle, binary.swizzle_table);
+                    break;
+
+                case OpCode::Type::UniformFlowControl:
+                    if (instr.opcode.Value().EffectiveOpCode() == OpCode::Id::LOOP) {
+                        instr.flow_control.int_uniform_id = command.reg_id;
+                        instr.flow_control.dest_offset = binary.program.size();
+
+//                        std::cout << "Started at "<< binary.program.size() << " <-> "<<i <<std::endl;
+                        // TODO: Handle nested LOOPs
+                        for (int i2 = i + 1; i2 < code.size(); ++i2) {
+                            if (code[i2].type == Regular) {
+  //                              std::cout << "went at "<< i2 << std::endl;
+                                instr.flow_control.dest_offset = instr.flow_control.dest_offset + 1;
+                            } else if (code[i2].type == EndLoop) {
+                                break;
+                            }
+
+                            if (i2 == code.size() - 1) {
+                                throw "No closing EndLoop directive found";
+                            }
+                        }
+                    } else {
+                        throw "Unknown flow control instruction";
+                    }
                     break;
 
                 default:
@@ -438,11 +451,12 @@ struct InlineAsm {
                 break;
             }
 
+            case EndLoop:
+                break;
+
             default:
                 throw "Unknown type";
             }
-
-            index++;
         }
         return binary;
     }
@@ -472,6 +486,9 @@ struct InlineAsm {
             case Uniform:
                 size += command.name.size() + 1;
                 size += sizeof(UniformInfo);
+                break;
+
+            case EndLoop:
                 break;
 
             default:
