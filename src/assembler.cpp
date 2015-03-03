@@ -972,27 +972,46 @@ int main(int argc, char* argv[])
         } else if (parser.ParseDeclaration(begin, input_code.end(), &statement_declaration)) {
             auto& var = statement_declaration;
 
-            Identifier id = boost::fusion::at_c<1>(var);
-            std::string idname = boost::fusion::at_c<0>(var);
-            Atomic ret = identifiers[id];
-            ret.mask = (boost::fusion::at_c<2>(var)) ? *boost::fusion::at_c<2>(var) : InputSwizzlerMask::FullMask();
-
-            std::vector<float>& values = boost::fusion::at_c<0>(boost::fusion::at_c<3>(var));
-            auto output_semantic = boost::fusion::at_c<1>(boost::fusion::at_c<3>(var));
-
-            // TODO: Make sure the symbol is not already defined
-
             // TODO: Support not specifying any uniform name
+            std::string idname = boost::fusion::at_c<0>(var);
 
-            // TODO: Warn if an alias is created for an output register without assigning a semantic
+            Identifier id = boost::fusion::at_c<1>(var);
+            Identifier end_id = (boost::fusion::at_c<2>(var)) ? *boost::fusion::at_c<2>(var) : id;
+            bool aliases_range = (id != end_id);
+            Atomic ret = identifiers[id];
+
+            bool has_swizzle_mask = boost::fusion::at_c<3>(var);
+            ret.mask = has_swizzle_mask ? *boost::fusion::at_c<3>(var) : InputSwizzlerMask::FullMask();
+
+            std::vector<float>& values = boost::fusion::at_c<0>(boost::fusion::at_c<4>(var));
+            auto output_semantic = boost::fusion::at_c<1>(boost::fusion::at_c<4>(var));
+
+            if (std::find(symbol_table.begin(), symbol_table.end(), idname) != symbol_table.end())
+                throw "Symbol name \"" + idname + "\" already defined!";
+
+            if (identifiers[id].GetType() != identifiers[end_id].GetType())
+                throw "May not specify different register types for alias range limits";
+
+            if (has_swizzle_mask && aliases_range)
+                throw "May not use swizzle masks when aliasing register ranges";
 
             if (values.size()) {
+                if (aliases_range)
+                    throw "May not alias a register range when declaring constants";
+
+                if (has_swizzle_mask)
+                    throw "May not specify a swizzle mask when declaring constants";
+
+                if (ret.GetType() != RegisterType::FloatUniform)
+                    throw "Assigning constants to non-float uniforms is currently unsupported";
+
+                if (values.size() != 4) {
+                    std::stringstream ss;
+                    ss <<"Must specify all register components when assigning constants (expected 4, got " << values.size() << ")";
+                    throw ss.str();
+                }
+
                 // TODO: Support non-float constants
-
-                // TODO: Make sure this is only called with registers for which it makes sense
-
-                // TODO: No swizzle mask may be used here.
-                // TODO: Number of given components must be the number of components in the given register
 
                 ConstantInfo constant;
                 constant.type = ConstantInfo::Float;
@@ -1009,32 +1028,53 @@ int main(int argc, char* argv[])
                 if (ret.GetType() != RegisterType::Output)
                     throw "May not assign semantics to non-output registers.";
 
+                if (aliases_range)
+                    throw "May not alias a register range when aliasing output registers";
+
                 // TODO: Make sure the declared output actually gets set (otherwise the GPU freezes)
-                // TODO: Make sure the input swizzle mask is valid (e.g. not ".yx")
 
                 OutputRegisterInfo output;
                 output.type = *output_semantic;
                 output.id = identifiers[id].GetIndex();
                 output.component_mask = 0;
-                for (auto comp : ret.mask.components) {
-                    output.component_mask = output.component_mask | ((comp == InputSwizzlerMask::x) ? 1 :
-                                                                     (comp == InputSwizzlerMask::y) ? 2 :
-                                                                     (comp == InputSwizzlerMask::z) ? 4 :
-                                                                     (comp == InputSwizzlerMask::w) ? 8 : 0);
+
+                for (int i = 0; i < ret.mask.num_components; ++i) {
+                    auto comp = ret.mask.components[i];
+                    uint32_t added_mask = ((comp == InputSwizzlerMask::x) ? 1 :
+                                           (comp == InputSwizzlerMask::y) ? 2 :
+                                           (comp == InputSwizzlerMask::z) ? 4 :
+                                           (comp == InputSwizzlerMask::w) ? 8 : 0);
+                    if (output.component_mask >= added_mask)
+                        throw "Invalid swizzle mask (may only mask away components for destination operands)";
+
+                    output.component_mask = output.component_mask | added_mask;
                 }
                 output_table.push_back(output);
 
             } else {
                 // plain uniform
 
+                static auto ToCustomSpace = [](const Atomic& reg) -> int {
+                    switch (reg.GetType()) {
+                    case RegisterType::Input: return reg.GetIndex();
+                    case RegisterType::FloatUniform: return reg.GetIndex() + 0x10;
+                    case RegisterType::IntUniform: return reg.GetIndex() + 0x70;
+                    case RegisterType::BoolUniform: return reg.GetIndex() + 0x78;
+                    case RegisterType::Output: throw "Must specify output semantic for output register";
+
+                    case RegisterType::Temporary:
+                    default:
+                        throw "May not assign aliases for the given register type";
+                    }
+                };
+
                 UniformInfo uniform;
                 uniform.basic.symbol_offset = [&]() { size_t ret = 0; for (auto& s : symbol_table) { ret +=s.length()+1; } return ret;}();
-                uniform.basic.reg_start = identifiers[id].GetIndex() + 16; // TODO: Hardcoded against float uniforms
-                uniform.basic.reg_end = identifiers[id].GetIndex() + 16;  // TODO: Ranges not supported
+                uniform.basic.reg_start = ToCustomSpace(identifiers[id]);
+                uniform.basic.reg_end = ToCustomSpace(identifiers[end_id]);
                 uniform_table.push_back(uniform);
 
                 symbol_table.push_back(idname);
-
             }
 
             Identifier new_identifier = identifiers.size();

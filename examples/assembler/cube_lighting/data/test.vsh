@@ -21,8 +21,6 @@
 .alias light_diffuse2 c12
 .alias light_ambient2 c13
 
-.alias temp_col       r0
-
 main:
 	mov r1.xyz,  v0.xyz
 	mov r1.w,    myconst.w
@@ -53,10 +51,10 @@ lighting: // color = sum over all lights(diffuse * clamp(dot(L,N),0) + ambient)
 		max r1.xyz, r1.xyz, myconst.yyy
 		mul r1.xyz, r1.xyz, light_diffuse[lcnt].xyz
 		add r1.xyz, r1.xyz, light_ambient[lcnt].xyz
-		add temp_col.xyz, r1.xyz, temp_col.xyz
+		add r0.xyz, r1.xyz, r0.xyz
 		nop
 	endloop
-	min temp_col.xyz, temp_col.xyz, myconst.xxx
+	min r0.xyz, r0.xyz, myconst.xxx
 
 	mov outcol, r0
 
