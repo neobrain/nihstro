@@ -25,6 +25,7 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#include <boost/optional.hpp>
 #include <array>
 #include <vector>
 #include <ostream>
@@ -159,12 +160,50 @@ private:
     }
 };
 
+struct ConditionInput : boost::fusion::vector<bool, Identifier, boost::optional<InputSwizzlerMask>> {
+    bool GetInvertFlag() const {
+        return boost::fusion::at_c<0>(*this);
+    }
+
+    const Identifier& GetIdentifier() const {
+        return boost::fusion::at_c<1>(*this);
+    }
+
+    bool HasSwizzleMask() const {
+        return boost::fusion::at_c<2>(*this);
+    }
+
+    const InputSwizzlerMask& GetSwizzleMask() const {
+        return *boost::fusion::at_c<2>(*this);
+    }
+
+};
+
+struct Condition : boost::fusion::vector<ConditionInput,
+                                         Instruction::FlowControlType::Op,
+                                         ConditionInput> {
+    Condition() = default;
+
+    const ConditionInput& GetFirstInput() const {
+        return boost::fusion::at_c<0>(*this);
+    }
+
+    Instruction::FlowControlType::Op GetConditionOp() const {
+        return boost::fusion::at_c<1>(*this);
+    }
+
+    const ConditionInput& GetSecondInput() const {
+        return boost::fusion::at_c<2>(*this);
+    }
+};
+
 using StatementLabel = std::string;
 
 // TODO: Figure out why this cannot be a std::tuple...
 struct StatementInstruction : boost::fusion::vector<OpCode, std::vector<Expression>> {
     StatementInstruction() = default;
 
+    // TODO: Obsolete constructor?
     StatementInstruction(const OpCode& opcode) : boost::fusion::vector<OpCode, std::vector<Expression>>(opcode, std::vector<Expression>()) {
     }
 
@@ -176,12 +215,74 @@ struct StatementInstruction : boost::fusion::vector<OpCode, std::vector<Expressi
         return boost::fusion::at_c<1>(*this);
     }
 };
+using FloatOpInstruction = StatementInstruction;
 
-using DeclarationConstant = boost::fusion::vector<std::string, Identifier, std::vector<float>>;
-using DeclarationOutput   = boost::fusion::vector<std::string, Identifier, OutputRegisterInfo::Type>;
-using DeclarationAlias    = boost::fusion::vector<std::string, Identifier>;
+struct CompareInstruction : boost::fusion::vector<OpCode, std::vector<Expression>, std::vector<Instruction::Common::CompareOpType::Op>> {
+    CompareInstruction() = default;
 
-using StatementDeclaration = boost::variant<DeclarationConstant, DeclarationOutput, DeclarationAlias>;
+    const OpCode& GetOpCode() const {
+        return boost::fusion::at_c<0>(*this);
+    }
+
+    const Expression& GetSrc1() const {
+        return boost::fusion::at_c<1>(*this)[0];
+    }
+
+    const Expression& GetSrc2() const {
+        return boost::fusion::at_c<1>(*this)[1];
+    }
+
+    Instruction::Common::CompareOpType::Op GetOp1() const {
+        return boost::fusion::at_c<2>(*this)[0];
+    }
+
+    Instruction::Common::CompareOpType::Op GetOp2() const {
+        return boost::fusion::at_c<2>(*this)[1];
+    }
+};
+
+struct FlowControlInstruction : boost::fusion::vector<OpCode,
+                                                      std::string /*target_label*/,
+                                                      boost::optional<std::string> /*return_label*/,
+                                                      boost::optional<Condition>> {
+    using ParentType = boost::fusion::vector<OpCode, std::string, boost::optional<std::string>, boost::optional<Condition>>;
+
+    FlowControlInstruction() = default;
+
+    FlowControlInstruction(const ParentType& obj) : boost::fusion::vector<OpCode, std::string, boost::optional<std::string>, boost::optional<Condition>>(obj) {};
+    const OpCode& GetOpCode() const {
+        return boost::fusion::at_c<0>(*this);
+    }
+
+    const std::string& GetTargetLabel() const {
+        return boost::fusion::at_c<1>(*this);
+    }
+
+    bool HasReturnLabel() const {
+        return boost::fusion::at_c<2>(*this);
+    }
+
+    const std::string& GetReturnLabel() const {
+        return *boost::fusion::at_c<2>(*this);
+    }
+
+    bool HasCondition() const {
+        return boost::fusion::at_c<3>(*this);
+    }
+
+    const Condition& GetCondition() const {
+        return *boost::fusion::at_c<3>(*this);
+    }
+
+};
+
+using StatementDeclaration = boost::fusion::vector<std::string /* alias name */,
+                                                   Identifier /* aliased identifier (start register) */,
+                                                   boost::optional<Identifier> /* aliased identifier (end register) */,
+                                                   boost::optional<InputSwizzlerMask> /* swizzle mask */,
+                                                   boost::fusion::vector<std::vector<float> /* constant value */,
+                                                                         boost::optional<OutputRegisterInfo::Type> /* output semantic */>>;
+
 
 struct ParserContext {
     // Maps known identifiers to an index to the controller's identifier list
@@ -197,16 +298,23 @@ struct Parser {
 
     void Skip(Iterator& begin, Iterator end);
 
-    bool ParseLabel(Iterator& begin, Iterator end, StatementLabel* label);
-
-    bool ParseInstruction(Iterator& begin, Iterator end, StatementInstruction* instruction);
+    void SkipSingleLine(Iterator& begin, Iterator end);
 
     bool ParseDeclaration(Iterator& begin, Iterator end, StatementDeclaration* declaration);
 
+    bool ParseLabel(Iterator& begin, Iterator end, StatementLabel* label);
+
+    bool ParseSimpleInstruction(Iterator& begin, Iterator end, OpCode* opcode);
+
+    bool ParseFloatOp(Iterator& begin, Iterator end, FloatOpInstruction* content);
+
+    bool ParseCompare(Iterator& begin, Iterator end, CompareInstruction* content);
+
+    bool ParseFlowControl(Iterator& begin, Iterator end, FlowControlInstruction* content);
+
 private:
     struct ParserImpl;
-//    std::unique_ptr<ParserImpl> impl;
-    ParserImpl* impl;
+    std::unique_ptr<ParserImpl> impl;
 };
 
 } // namespace

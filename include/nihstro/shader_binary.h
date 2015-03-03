@@ -113,26 +113,6 @@ struct SwizzleInfo {
 };
 
 struct ConstantInfo {
-
-    ConstantInfo() = default;
-
-    ConstantInfo(const ConstantInfo& oth) {
-        full_first_word = oth.full_first_word;
-        f.x = oth.f.x;
-        f.y = oth.f.y;
-        f.z = oth.f.z;
-        f.w = oth.f.w;
-	}
-
-    ConstantInfo& operator =(const ConstantInfo& oth) {
-        full_first_word = oth.full_first_word;
-        f.x = oth.f.x;
-        f.y = oth.f.y;
-        f.z = oth.f.z;
-        f.w = oth.f.w;
-        return *this;
-    }
-
     enum Type : uint32_t {
         Bool  = 0,
         Int   = 1,
@@ -147,7 +127,6 @@ struct ConstantInfo {
         uint32_t full_first_word;
     };
 
-    // float24 values..
     union {
         BitField<0, 1, uint32_t> b;
 
@@ -177,11 +156,15 @@ struct LabelInfo {
 
 union OutputRegisterInfo {
     enum Type : uint64_t {
-        POSITION = 0,
-        COLOR = 2,
-        TEXCOORD0 = 3,
-        TEXCOORD1 = 5,
-        TEXCOORD2 = 6,
+        POSITION   = 0,
+        QUATERNION = 1,
+        COLOR      = 2,
+        TEXCOORD0  = 3,
+
+        TEXCOORD1  = 5,
+        TEXCOORD2  = 6,
+
+        VIEW       = 8,
     };
 
     OutputRegisterInfo& operator =(const OutputRegisterInfo& oth) {
@@ -196,7 +179,7 @@ union OutputRegisterInfo {
     BitField<32,  4, uint64_t> component_mask;
     BitField<32, 32, uint64_t> descriptor;
 
-    std::string GetMask() const {
+    const std::string GetMask() const {
         std::string ret;
         if (component_mask & 1) ret += "x";
         if (component_mask & 2) ret += "y";
@@ -205,13 +188,15 @@ union OutputRegisterInfo {
         return ret;
     }
 
-    std::string GetPlainName() const {
-        std::map<Type, std::string> map = {
-            { POSITION,  "out.pos"},
-            { COLOR,     "out.col"},
-            { TEXCOORD0, "out.tex0"},
-            { TEXCOORD1, "out.tex1"},
-            { TEXCOORD2, "out.tex2"},
+    const std::string GetSemanticName() const {
+        static const std::map<Type, std::string> map = {
+            { POSITION,   "out.pos"  },
+            { QUATERNION, "out.quat" },
+            { COLOR,      "out.col"  },
+            { TEXCOORD0,  "out.tex0" },
+            { TEXCOORD1,  "out.tex1" },
+            { TEXCOORD2,  "out.tex2" },
+            { VIEW,       "out.view" }
         };
         auto it = map.find(type);
         if (it != map.end())
@@ -219,21 +204,44 @@ union OutputRegisterInfo {
         else
             return "out.unk";
     }
-
-    std::string GetFullName() const {
-        return GetPlainName() + "." + GetMask();
-    }
 };
 
 struct UniformInfo {
-    UniformInfo& operator=(const UniformInfo& oth) {
-        basic.symbol_offset = oth.basic.symbol_offset;
-        basic.reg_start.Assign(oth.basic.reg_start);
-        basic.reg_end.Assign(oth.basic.reg_end);
-        name = oth.name;
-    }
-
     struct {
+        static RegisterType GetType(uint32_t reg) {
+            if (reg < 0x10) return RegisterType::Input;
+            else if (reg < 0x70) return RegisterType::FloatUniform;
+            else if (reg < 0x74) return RegisterType::IntUniform;
+            else if (reg >= 0x78 && reg < 0x88) return RegisterType::BoolUniform;
+            else return RegisterType::Unknown;
+        }
+
+        static int GetIndex(uint32_t reg) {
+            switch (GetType(reg)) {
+            case RegisterType::Input: return reg;
+            case RegisterType::FloatUniform: return reg - 0x10;
+            case RegisterType::IntUniform: return reg - 0x70;
+            case RegisterType::BoolUniform: return reg - 0x78;
+            default: return -1;
+            }
+        }
+
+        RegisterType GetStartType() const {
+            return GetType(reg_start);
+        }
+
+        RegisterType GetEndType() const {
+            return GetType(reg_end);
+        }
+
+        int GetStartIndex() const {
+            return GetIndex(reg_start);
+        }
+
+        int GetEndIndex() const {
+            return GetIndex(reg_end);
+        }
+
         uint32_t symbol_offset;
         union {
             BitField< 0, 16, uint32_t> reg_start;

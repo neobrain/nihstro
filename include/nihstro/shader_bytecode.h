@@ -42,18 +42,24 @@ enum class RegisterType {
     Output,
     Temporary,
     FloatUniform,
+    IntUniform,
+    BoolUniform,
     Address,
+    ConditionalCode,
     Unknown
 };
 
 static std::string GetRegisterName(RegisterType type) {
     switch (type) {
-    case RegisterType::Input:        return "v";
-    case RegisterType::Output:       return "o";
-    case RegisterType::Temporary:    return "r";
-    case RegisterType::FloatUniform: return "c";
-    case RegisterType::Unknown:      return "u";
-    default:                         return "";
+    case RegisterType::Input:           return "v";
+    case RegisterType::Output:          return "o";
+    case RegisterType::Temporary:       return "r";
+    case RegisterType::FloatUniform:    return "c";
+    case RegisterType::IntUniform:      return "i";
+    case RegisterType::BoolUniform:     return "b";
+    case RegisterType::ConditionalCode: return "cc";
+    case RegisterType::Unknown:         return "u";
+    default:                            return "";
     }
 }
 
@@ -172,7 +178,7 @@ struct DestRegister {
             reg.value = index;
         else if (type == RegisterType::Temporary)
             reg.value = index + 0x10;
-        else if (type == RegisterType::FloatUniform)
+        else if (type == RegisterType::FloatUniform) // TODO: Wait what? These shouldn't be writable..
             reg.value = index + 0x20;
         else {
             // TODO: Should throw an exception or something.
@@ -230,6 +236,7 @@ struct OpCode {
 
         EX2     = 0x05,   // Base-2 exponential
         LG2     = 0x06,   // Base-2 logarithm
+
         MUL     = 0x08,
         SGE     = 0x09,   // Set to 1.0 if SRC1 is greater or equal to SRC2
         SLT     = 0x0A,   // Set to 1.0 if SRC1 is less than SRC2
@@ -265,6 +272,17 @@ struct OpCode {
         // lower 3 opcode bits ignored for these
         MADI    = 0x30,
         MAD     = 0x38, // lower 3 opcode bits ignored
+
+        // Pseudo-instructions, used internally by the assembler
+        PSEUDO_INSTRUCTION_START = 0x40,
+
+        GEN_IF = PSEUDO_INSTRUCTION_START, // Generic IF (IFC or IFU)
+        ELSE,
+        ENDIF,
+        GEN_CALL,       // Generic CALL (CALL, CALC, or CALLU)
+        GEN_JMP,        // Generic JMP (JMPC or JMPU)
+        //RET,          // Return from function (not supported yet)
+        ENDLOOP,
     };
 
     enum class Type {
@@ -326,11 +344,12 @@ struct OpCode {
 
         const char* name;
 
+        // TODO: Deprecate.
         size_t NumArguments() const {
             if (type == Type::Arithmetic) {
-                if (subtype & TwoArguments)
+                if (subtype & Src2)
                     return 3;
-                else if (subtype & OneArgument)
+                else if (subtype & Src1)
                     return 2;
             }
 
@@ -469,7 +488,7 @@ union Instruction {
 
 
     // Format used e.g. by arithmetic instructions and comparisons
-    union {
+    union Common { // TODO: Remove name
         BitField<0x00, 0x7, uint32_t> operand_desc_id;
 
         const SourceRegister GetSrc1(bool is_inverted) const {
@@ -488,12 +507,14 @@ union Instruction {
             }
         }
 
+        /**
+         * Source inputs may be reordered for certain instructions.
+         * Use GetSrc1 and GetSrc2 instead to access the input register indices hence.
+         */
         BitField<0x07, 0x5, SourceRegister> src2;
         BitField<0x0c, 0x7, SourceRegister> src1;
-
-        // TODO: 1c and 1i use different layouts for this...
-        BitField<0x07, 0x7, SourceRegister> src1i;
-        BitField<0x0e, 0x5, SourceRegister> src2i;
+        BitField<0x07, 0x7, SourceRegister> src2i;
+        BitField<0x0e, 0x5, SourceRegister> src1i;
 
         // Address register value is used for relative addressing of src1
         BitField<0x13, 0x2, uint32_t> address_register_index;
