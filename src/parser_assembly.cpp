@@ -599,7 +599,7 @@ struct DeclarationParser : qi::grammar<Iterator, StatementDeclaration(), Assembl
         // match a constant or a semantic, and fill the respective other one with a dummy
         const_or_semantic = (dummy_const >> output_semantics_rule) | (constant >> dummy_semantic);
 
-        auto declaration_begin = ((qi::lit('.') > alias_identifier) >> known_identifier >> -(qi::lit('.') > swizzle_mask));
+        auto declaration_begin = ((qi::lit('.') > alias_identifier) >> known_identifier >> -(qi::lit('-') > known_identifier) >> -(qi::lit('.') > swizzle_mask));
 
         // TODO: Would like to use +ascii::blank instead, but somehow that fails to parse lines like ".alias name o2.xy texcoord0" correctly
         auto string_as = qi::omit[qi::no_skip[*/*+*/ascii::blank >> qi::lit("as") >> +ascii::blank]];

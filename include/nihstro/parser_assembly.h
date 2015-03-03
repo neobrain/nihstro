@@ -276,8 +276,12 @@ struct FlowControlInstruction : boost::fusion::vector<OpCode,
 
 };
 
-using StatementDeclaration = boost::fusion::vector<std::string, Identifier, boost::optional<InputSwizzlerMask>,
-                                                   boost::fusion::vector<std::vector<float>, boost::optional<OutputRegisterInfo::Type>>>;
+using StatementDeclaration = boost::fusion::vector<std::string /* alias name */,
+                                                   Identifier /* aliased identifier (start register) */,
+                                                   boost::optional<Identifier> /* aliased identifier (end register) */,
+                                                   boost::optional<InputSwizzlerMask> /* swizzle mask */,
+                                                   boost::fusion::vector<std::vector<float> /* constant value */,
+                                                                         boost::optional<OutputRegisterInfo::Type> /* output semantic */>>;
 
 
 struct ParserContext {
