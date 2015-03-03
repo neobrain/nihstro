@@ -575,10 +575,12 @@ struct DeclarationParser : qi::grammar<Iterator, StatementDeclaration(), Assembl
 
         // Setup symbol table
         output_semantics.add("position", OutputRegisterInfo::POSITION);
+        output_semantics.add("quaternion", OutputRegisterInfo::QUATERNION);
         output_semantics.add("color", OutputRegisterInfo::COLOR);
         output_semantics.add("texcoord0", OutputRegisterInfo::TEXCOORD0);
         output_semantics.add("texcoord1", OutputRegisterInfo::TEXCOORD1);
         output_semantics.add("texcoord2", OutputRegisterInfo::TEXCOORD2);
+        output_semantics.add("view", OutputRegisterInfo::VIEW);
         output_semantics_rule = qi::lexeme[output_semantics];
 
         // Setup rules

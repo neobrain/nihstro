@@ -156,11 +156,15 @@ struct LabelInfo {
 
 union OutputRegisterInfo {
     enum Type : uint64_t {
-        POSITION = 0,
-        COLOR = 2,
-        TEXCOORD0 = 3,
-        TEXCOORD1 = 5,
-        TEXCOORD2 = 6,
+        POSITION   = 0,
+        QUATERNION = 1,
+        COLOR      = 2,
+        TEXCOORD0  = 3,
+
+        TEXCOORD1  = 5,
+        TEXCOORD2  = 6,
+
+        VIEW       = 8,
     };
 
     OutputRegisterInfo& operator =(const OutputRegisterInfo& oth) {
@@ -175,7 +179,7 @@ union OutputRegisterInfo {
     BitField<32,  4, uint64_t> component_mask;
     BitField<32, 32, uint64_t> descriptor;
 
-    std::string GetMask() const {
+    const std::string GetMask() const {
         std::string ret;
         if (component_mask & 1) ret += "x";
         if (component_mask & 2) ret += "y";
@@ -184,13 +188,15 @@ union OutputRegisterInfo {
         return ret;
     }
 
-    std::string GetSemanticName() const {
-        std::map<Type, std::string> map = {
-            { POSITION,  "out.pos"},
-            { COLOR,     "out.col"},
-            { TEXCOORD0, "out.tex0"},
-            { TEXCOORD1, "out.tex1"},
-            { TEXCOORD2, "out.tex2"},
+    const std::string GetSemanticName() const {
+        static const std::map<Type, std::string> map = {
+            { POSITION,   "out.pos"  },
+            { QUATERNION, "out.quat" },
+            { COLOR,      "out.col"  },
+            { TEXCOORD0,  "out.tex0" },
+            { TEXCOORD1,  "out.tex1" },
+            { TEXCOORD2,  "out.tex2" },
+            { VIEW,       "out.view" }
         };
         auto it = map.find(type);
         if (it != map.end())
