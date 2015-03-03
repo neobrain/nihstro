@@ -66,7 +66,7 @@ E.g. `.alias input_texture v2.xy`
 ### Alias with Assignment of a Semantic (output registers)
 `.alias <new_identifier> <existing_identifier>{.swizzle_mask} as <semantic>`
 
-Declares an alias of `existing_identifier` with the name `new_identifier` and assigns the given semantic to the corresponding output register. An output semantic needs to be given to describe how the output vertex attribute is intended to be used after shader execution. `semantic` may be any of the strings `position`, `color`, `texcoord0`, `texcoord1` and `texcoord2`. If not all output register components are being written to, a swizzle mask should be used to denote the "active" components. Note that this swizzle mask may not reorder any components.
+Declares an alias of `existing_identifier` with the name `new_identifier` and assigns the given semantic to the corresponding output register. An output semantic needs to be given to describe how the output vertex attribute is intended to be used after shader execution. `semantic` may be any of the strings `position`, `quaternion`, `color`, `texcoord0`, `texcoord1`, `texcoord2`, and `view`. If not all output register components are being written to, a swizzle mask should be used to denote the "active" components. Note that this swizzle mask may not reorder any components.
 
 E.g. `.alias output_texcoord o1.xy as texcoord0`
 
