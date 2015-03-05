@@ -42,6 +42,18 @@
 #include "nihstro/shader_binary.h"
 #include "nihstro/shader_bytecode.h"
 
+// A boost::spirit::swap implementation is required to use qi::hold
+// TODO: Figure out a more elegant way to do this
+namespace boost {
+namespace spirit {
+static void swap(nihstro::Condition& cond1, nihstro::Condition& cond2) {
+    nihstro::Condition cond3(cond1);
+    cond1 = cond2;
+    cond2 = cond3;
+}
+}
+}
+
 using namespace boost::spirit;
 namespace phoenix = boost::phoenix;
 
