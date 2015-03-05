@@ -384,8 +384,8 @@ struct OpCode {
         case Id::DP3:     return { Type::Arithmetic,         Info::TwoArguments,        "dp3" };
         case Id::DP4:     return { Type::Arithmetic,         Info::TwoArguments,        "dp4" };
         case Id::DPH:     return { Type::Arithmetic,         Info::TwoArguments,        "dph" };
-        case Id::EX2:     return { Type::Arithmetic,         Info::OneArgument,         "ex2" };
-        case Id::LG2:     return { Type::Arithmetic,         Info::OneArgument,         "lg2" };
+        case Id::EX2:     return { Type::Arithmetic,         Info::OneArgument,         "exp" };
+        case Id::LG2:     return { Type::Arithmetic,         Info::OneArgument,         "log" };
         case Id::MUL:     return { Type::Arithmetic,         Info::TwoArguments,        "mul" };
         case Id::SGE:     return { Type::Arithmetic,         Info::TwoArguments,        "sge" };
         case Id::SLT:     return { Type::Arithmetic,         Info::TwoArguments,        "slt" };
