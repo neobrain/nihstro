@@ -399,6 +399,7 @@ int main(int argc, char* argv[])
         FlowControlInstruction statement_flow_control;
         StatementDeclaration statement_declaration;
         OpCode statement_simple;
+        OpCode opcode;
 
         parser.Skip(begin, input_code.end());
 
@@ -414,34 +415,15 @@ int main(int argc, char* argv[])
 
             CustomLabelInfo label_info = { program_write_offset, symbol_table_index };
             label_table.push_back(label_info);
-        } else if (parser.ParseSimpleInstruction(begin, input_code.end(), &statement_simple)) {
-            OpCode opcode = statement_simple;
-
-            switch (opcode) {
-            case OpCode::Id::NOP:
-            case OpCode::Id::END:
-            case OpCode::Id::EMIT:
+        } else if (parser.ParseOpCode(begin, input_code.end(), &opcode)) {
+            if (static_cast<uint32_t>((OpCode::Id)opcode) < static_cast<uint32_t>(OpCode::Id::PSEUDO_INSTRUCTION_START) ||
+                opcode == OpCode::Id::GEN_IF || opcode == OpCode::Id::GEN_CALL ||
+                opcode == OpCode::Id::GEN_JMP) {
                 ++program_write_offset;
-                break;
-
-            case OpCode::Id::ELSE:
-            case OpCode::Id::ENDIF:
-            case OpCode::Id::ENDLOOP:
-                break;
-
-            default:
-            {
-                std::stringstream ss("Unknown opcode ");
-                ss << static_cast<uint32_t>((OpCode::Id)opcode);
-                throw ss.str();
             }
-            }
-        } else if (parser.ParseFloatOp(begin, input_code.end(), &statement_instruction)) {
-            ++program_write_offset;
-        } else if (parser.ParseCompare(begin, input_code.end(), &compare_instruction)) {
-            ++program_write_offset;
-        } else if (parser.ParseFlowControl(begin, input_code.end(), &statement_flow_control)) {
-            ++program_write_offset;
+
+            // TODO: Should really do this, but it breaks stuff currently...
+            //parser.SkipSingleLine(begin, input_code.end());
         } else {
             parser.SkipSingleLine(begin, input_code.end());
         }
@@ -939,7 +921,7 @@ int main(int argc, char* argv[])
                 unsigned return_address = LookupLableAddress(statement_flow_control.GetReturnLabel());
 
                 if (return_address <= target_address)
-                    throw "Return address must be bigger than target address";
+                    throw "Return address must be strictly bigger than target address";
 
                 shinst.flow_control.num_instructions = return_address - target_address;
             } else {

@@ -294,20 +294,31 @@ struct Parser {
     Parser(const ParserContext& context);
     ~Parser();
 
+    // Skip whitespaces, blank lines, and comments
     void Skip(Iterator& begin, Iterator end);
 
+    // Skip to the next line
     void SkipSingleLine(Iterator& begin, Iterator end);
 
+    // Parse alias declaration including line ending
     bool ParseDeclaration(Iterator& begin, Iterator end, StatementDeclaration* declaration);
 
+    // Parse label declaration including line ending
     bool ParseLabel(Iterator& begin, Iterator end, StatementLabel* label);
 
+    // Parse nothing but a single opcode
+    bool ParseOpCode(Iterator& begin, Iterator end, OpCode* opcode);
+
+    // Parse trival instruction including line ending
     bool ParseSimpleInstruction(Iterator& begin, Iterator end, OpCode* opcode);
 
+    // Parse float instruction including line ending
     bool ParseFloatOp(Iterator& begin, Iterator end, FloatOpInstruction* content);
 
+    // Parse compare instruction including line ending
     bool ParseCompare(Iterator& begin, Iterator end, CompareInstruction* content);
 
+    // Parse flow control instruction including line ending
     bool ParseFlowControl(Iterator& begin, Iterator end, FlowControlInstruction* content);
 
 private:

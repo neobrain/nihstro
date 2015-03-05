@@ -157,6 +157,49 @@ struct CommonRules {
 
     CommonRules(const ParserContext& context) {
 
+        // Setup symbol table
+        opcodes_trivial.add
+                   ( "nop",      OpCode::Id::NOP      )
+                   ( "end",      OpCode::Id::END      )
+                   ( "emit",     OpCode::Id::EMIT     )
+                   ( "else",     OpCode::Id::ELSE     )
+                   ( "endif",    OpCode::Id::ENDIF    )
+                   ( "endloop",  OpCode::Id::ENDLOOP  );
+
+        opcodes_float[0].add
+                   ( "mova",     OpCode::Id::MOVA     );
+
+        opcodes_float[1].add
+                   ( "ex2",      OpCode::Id::EX2      )
+                   ( "lg2",      OpCode::Id::LG2      )
+                   ( "flr",      OpCode::Id::FLR      )
+                   ( "rcp",      OpCode::Id::RCP      )
+                   ( "rsq",      OpCode::Id::RSQ      )
+                   ( "mov",      OpCode::Id::MOV      );
+        opcodes_float[2].add
+                   ( "add",      OpCode::Id::ADD      )
+                   ( "dp3",      OpCode::Id::DP3      )
+                   ( "dp4",      OpCode::Id::DP4      )
+                   ( "dph",      OpCode::Id::DPH      )
+                   ( "mul",      OpCode::Id::MUL      )
+                   ( "sge",      OpCode::Id::SGE      )
+                   ( "slt",      OpCode::Id::SLT      )
+                   ( "max",      OpCode::Id::MAX      )
+                   ( "min",      OpCode::Id::MIN      );
+        opcodes_float[3].add
+                   ( "mad",      OpCode::Id::MAD      );
+
+        opcodes_compare.add
+                   ( "cmp",      OpCode::Id::CMP      );
+
+        opcodes_flowcontrol[0].add
+                   ( "break",    OpCode::Id::BREAKC   )
+                   ( "if",       OpCode::Id::GEN_IF   )
+                   ( "loop",     OpCode::Id::LOOP     );
+        opcodes_flowcontrol[1].add
+                   ( "jmp",      OpCode::Id::GEN_JMP  )
+                   ( "call",     OpCode::Id::GEN_CALL );
+
         signs.add( "+", +1)
                  ( "-", -1);
 
@@ -206,9 +249,14 @@ struct CommonRules {
     qi::rule<Iterator, std::string(),             Skipper> identifier;
     qi::rule<Iterator, Expression(),              Skipper> expression;
 
-    qi::symbols<char, int> signs;
+    qi::symbols<char, OpCode> opcodes_trivial;
+    qi::symbols<char, OpCode> opcodes_compare;
+    std::array<qi::symbols<char, OpCode>, 4> opcodes_float; // indexed by number of arguments
+    std::array<qi::symbols<char, OpCode>, 2> opcodes_flowcontrol;
 
-    qi::symbols<char, InputSwizzlerMask::Component>          swizzlers;
+    qi::symbols<char, int>    signs;
+
+    qi::symbols<char, InputSwizzlerMask::Component>        swizzlers;
     qi::rule<Iterator, InputSwizzlerMask(),       Skipper> swizzle_mask;
 
     Diagnostics diagnostics;
@@ -228,22 +276,23 @@ template<typename Iterator>
 struct TrivialOpParser : qi::grammar<Iterator, OpCode(), AssemblySkipper<Iterator>> {
     using Skipper = AssemblySkipper<Iterator>;
 
-    TrivialOpParser(const ParserContext& context)
+    TrivialOpParser(const ParserContext& context, bool require_end_of_line = true)
                 : TrivialOpParser::base_type(instruction),
                   common(context),
-                  diagnostics(common.diagnostics) {
-
-        // Setup symbol table
-        opcodes.add
-                   ( "nop",      OpCode::Id::NOP     )
-                   ( "end",      OpCode::Id::END     )
-                   ( "emit",     OpCode::Id::EMIT    )
-                   ( "else",     OpCode::Id::ELSE    )
-                   ( "endif",    OpCode::Id::ENDIF   )
-                   ( "endloop",  OpCode::Id::ENDLOOP );
+                  diagnostics(common.diagnostics),
+                  opcodes_trivial(common.opcodes_trivial),
+                  opcodes_compare(common.opcodes_compare),
+                  opcodes_float(common.opcodes_float),
+                  opcodes_flowcontrol(common.opcodes_flowcontrol) {
 
         // Setup rules
-        opcode = qi::no_case[qi::lexeme[opcodes]];
+        if (require_end_of_line) {
+            opcode = qi::no_case[qi::lexeme[opcodes_trivial]];
+        } else {
+            opcode = qi::no_case[qi::lexeme[opcodes_trivial | opcodes_compare | opcodes_float[0]
+                                            | opcodes_float[0] | opcodes_float[0] | opcodes_float[0]
+                                            | opcodes_flowcontrol[0] | opcodes_flowcontrol[1]]];
+        }
 
         instruction %= opcode > qi::omit[qi::eol | qi::eoi];
 
@@ -256,7 +305,10 @@ struct TrivialOpParser : qi::grammar<Iterator, OpCode(), AssemblySkipper<Iterato
 
     CommonRules<Iterator> common;
 
-    qi::symbols<char, OpCode> opcodes;
+    qi::symbols<char, OpCode>& opcodes_trivial;
+    qi::symbols<char, OpCode>& opcodes_compare;
+    std::array<qi::symbols<char, OpCode>, 4>& opcodes_float; // indexed by number of arguments
+    std::array<qi::symbols<char, OpCode>, 2>& opcodes_flowcontrol;
 
     // Rule-ified symbols, which can be assigned names
     qi::rule<Iterator, OpCode(), Skipper> opcode;
@@ -275,31 +327,8 @@ struct FloatOpParser : qi::grammar<Iterator, FloatOpInstruction(), AssemblySkipp
                 : FloatOpParser::base_type(instruction),
                   common(context),
                   expression(common.expression),
-                  diagnostics(common.diagnostics) {
-
-        // Setup symbol table
-        opcodes[0].add
-                   ( "mova",  OpCode::Id::MOVA    );
-
-        opcodes[1].add
-                   ( "ex2",   OpCode::Id::EX2     )
-                   ( "lg2",   OpCode::Id::LG2     )
-                   ( "flr",   OpCode::Id::FLR     )
-                   ( "rcp",   OpCode::Id::RCP     )
-                   ( "rsq",   OpCode::Id::RSQ     )
-                   ( "mov",   OpCode::Id::MOV     );
-        opcodes[2].add
-                   ( "add",   OpCode::Id::ADD     )
-                   ( "dp3",   OpCode::Id::DP3     )
-                   ( "dp4",   OpCode::Id::DP4     )
-                   ( "dph",   OpCode::Id::DPH     )
-                   ( "mul",   OpCode::Id::MUL     )
-                   ( "sge",   OpCode::Id::SGE     )
-                   ( "slt",   OpCode::Id::SLT     )
-                   ( "max",   OpCode::Id::MAX     )
-                   ( "min",   OpCode::Id::MIN     );
-        opcodes[3].add
-                   ( "mad",   OpCode::Id::MAD     );
+                  diagnostics(common.diagnostics),
+                  opcodes_float(common.opcodes_float) {
 
         // Setup rules
 
@@ -307,7 +336,7 @@ struct FloatOpParser : qi::grammar<Iterator, FloatOpInstruction(), AssemblySkipp
 
         for (int i = 0; i < 4; ++i) {
             // Make sure that a mnemonic is always followed by a space if it expects an argument
-            opcode[i] = qi::no_case[qi::lexeme[opcodes[i] >> qi::omit[ascii::blank]]];
+            opcode[i] = qi::no_case[qi::lexeme[opcodes_float[i] >> qi::omit[ascii::blank]]];
         }
 
         // chain of arguments for each group of opcodes
@@ -346,21 +375,21 @@ struct FloatOpParser : qi::grammar<Iterator, FloatOpInstruction(), AssemblySkipp
 
     CommonRules<Iterator> common;
 
-    qi::symbols<char, OpCode>                     opcodes[4]; // indexed by number of arguments
+    std::array<qi::symbols<char, OpCode>, 4>& opcodes_float;
 
     // Rule-ified symbols, which can be assigned names
-    qi::rule<Iterator, OpCode(),                  Skipper> opcode[4];
+    qi::rule<Iterator, OpCode(),                  Skipper>  opcode[4];
 
     // Building blocks
     qi::rule<Iterator, Expression(),              Skipper>& expression;
-    qi::rule<Iterator, std::vector<Expression>(), Skipper> expression_chain[4]; // sequence of instruction arguments
+    qi::rule<Iterator, std::vector<Expression>(), Skipper>  expression_chain[4]; // sequence of instruction arguments
 
     // Compounds
-    qi::rule<Iterator, FloatOpInstruction(),    Skipper> instr[4];
-    qi::rule<Iterator, FloatOpInstruction(),    Skipper> instruction;
+    qi::rule<Iterator, FloatOpInstruction(),    Skipper>    instr[4];
+    qi::rule<Iterator, FloatOpInstruction(),    Skipper>    instruction;
 
     // Utility
-    qi::rule<Iterator,                            Skipper> not_comma;
+    qi::rule<Iterator,                            Skipper>  not_comma;
 
     Diagnostics diagnostics;
 };
@@ -375,11 +404,8 @@ struct CompareParser : qi::grammar<Iterator, CompareInstruction(), AssemblySkipp
                 : CompareParser::base_type(instruction),
                   common(context),
                   expression(common.expression),
-                  diagnostics(common.diagnostics) {
-
-        // Setup symbol table
-        opcodes.add
-                   ( "cmp",  OpCode::Id::CMP  );
+                  diagnostics(common.diagnostics),
+                  opcodes_compare(common.opcodes_compare) {
 
         // TODO: Will this properly match >= ?
         compare_ops.add
@@ -394,7 +420,7 @@ struct CompareParser : qi::grammar<Iterator, CompareInstruction(), AssemblySkipp
 
         auto comma_rule = qi::lit(',');
 
-        opcode = qi::no_case[qi::lexeme[opcodes >> qi::omit[ascii::blank]]];
+        opcode = qi::no_case[qi::lexeme[opcodes_compare >> qi::omit[ascii::blank]]];
         compare_op = qi::lexeme[compare_ops];
 
         // cmp src1, src2, op1, op2
@@ -414,7 +440,7 @@ struct CompareParser : qi::grammar<Iterator, CompareInstruction(), AssemblySkipp
 
     CommonRules<Iterator> common;
 
-    qi::symbols<char, OpCode>                     opcodes;
+    qi::symbols<char, OpCode>&                    opcodes_compare;
     qi::symbols<char, CompareOpEnum>              compare_ops;
 
     // Rule-ified symbols, which can be assigned debug names
@@ -448,16 +474,8 @@ struct FlowControlParser : qi::grammar<Iterator, FlowControlInstruction(), Assem
                   expression(common.expression),
                   identifier(common.identifier),
                   swizzle_mask(common.swizzle_mask),
-                  diagnostics(common.diagnostics) {
-
-        // Setup symbol table
-        opcodes[0].add
-                   ( "break", OpCode::Id::BREAKC   )
-                   ( "if",    OpCode::Id::GEN_IF   )
-                   ( "loop",  OpCode::Id::LOOP     );
-        opcodes[1].add
-                   ( "jmp",   OpCode::Id::GEN_JMP  )
-                   ( "call",  OpCode::Id::GEN_CALL );
+                  diagnostics(common.diagnostics),
+                  opcodes_flowcontrol(common.opcodes_flowcontrol) {
 
         condition_ops.add
                    ( "&&",    ConditionOp::And     )
@@ -469,8 +487,8 @@ struct FlowControlParser : qi::grammar<Iterator, FlowControlInstruction(), Assem
         auto blank_rule = qi::omit[ascii::blank];
         auto label_rule = identifier.alias();
 
-        opcode[0] = qi::lexeme[qi::no_case[opcodes[0]] >> blank_rule];
-        opcode[1] = qi::lexeme[qi::no_case[opcodes[1]] >> blank_rule];
+        opcode[0] = qi::lexeme[qi::no_case[opcodes_flowcontrol[0]] >> blank_rule];
+        opcode[1] = qi::lexeme[qi::no_case[opcodes_flowcontrol[1]] >> blank_rule];
 
         condition_op = qi::lexeme[condition_ops];
 
@@ -514,7 +532,7 @@ struct FlowControlParser : qi::grammar<Iterator, FlowControlInstruction(), Assem
 
     CommonRules<Iterator> common;
 
-    qi::symbols<char, OpCode>                     opcodes[2];
+    std::array<qi::symbols<char, OpCode>, 2>&     opcodes_flowcontrol;
     qi::symbols<char, ConditionOpEnum>            condition_ops;
 
     // Rule-ified symbols, which can be assigned debug names
@@ -643,7 +661,10 @@ struct DeclarationParser : qi::grammar<Iterator, StatementDeclaration(), Assembl
 struct Parser::ParserImpl {
     using Iterator = std::string::iterator;
 
-    ParserImpl(const ParserContext& context) : label(context), simple_instruction(context), instruction(context), compare(context), flow_control(context), declaration(context) {
+    ParserImpl(const ParserContext& context) : label(context), plain_instruction(context, false),
+                                               simple_instruction(context), instruction(context),
+                                               compare(context), flow_control(context),
+                                               declaration(context) {
     }
 
     void Skip(Iterator& begin, Iterator end) {
@@ -660,6 +681,12 @@ struct Parser::ParserImpl {
         assert(content != nullptr);
 
         return phrase_parse(begin, end, label, skipper, *content);
+    }
+
+    bool ParseOpCode(Iterator& begin, Iterator end, OpCode* content) {
+        assert(content != nullptr);
+
+        return phrase_parse(begin, end, simple_instruction, skipper, *content);
     }
 
     bool ParseSimpleInstruction(Iterator& begin, Iterator end, OpCode* content) {
@@ -696,6 +723,7 @@ private:
     AssemblySkipper<Iterator>   skipper;
 
     LabelParser<Iterator>       label;
+    TrivialOpParser<Iterator>   plain_instruction;
     TrivialOpParser<Iterator>   simple_instruction;
     FloatOpParser<Iterator>     instruction;
     CompareParser<Iterator>     compare;
@@ -719,6 +747,10 @@ void Parser::SkipSingleLine(Iterator& begin, Iterator end) {
 
 bool Parser::ParseLabel(Iterator& begin, Iterator end, StatementLabel* label) {
     return impl->ParseLabel(begin, end, label);
+}
+
+bool Parser::ParseOpCode(Iterator& begin, Iterator end, OpCode* opcode) {
+    return impl->ParseOpCode(begin, end, opcode);
 }
 
 bool Parser::ParseSimpleInstruction(Iterator& begin, Iterator end, OpCode* opcode) {
