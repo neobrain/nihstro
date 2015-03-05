@@ -27,7 +27,7 @@
 
 
 // Enable this for detailed XML overview of parser results
-// #define BOOST_SPIRIT_DEBUG
+#define BOOST_SPIRIT_DEBUG
 
 #include <boost/spirit/include/qi.hpp>
 
@@ -168,8 +168,8 @@ struct CommonRules {
                    ( "mova",     OpCode::Id::MOVA     );
 
         opcodes_float[1].add
-                   ( "ex2",      OpCode::Id::EX2      )
-                   ( "lg2",      OpCode::Id::LG2      )
+                   ( "exp",      OpCode::Id::EX2      )
+                   ( "log",      OpCode::Id::LG2      )
                    ( "flr",      OpCode::Id::FLR      )
                    ( "rcp",      OpCode::Id::RCP      )
                    ( "rsq",      OpCode::Id::RSQ      )
@@ -275,11 +275,11 @@ private:
     qi::rule<Iterator, unsigned int(),            Skipper> uint_after_sign;
 };
 
-template<typename Iterator>
+template<typename Iterator, bool require_end_of_line>
 struct TrivialOpParser : qi::grammar<Iterator, OpCode(), AssemblySkipper<Iterator>> {
     using Skipper = AssemblySkipper<Iterator>;
 
-    TrivialOpParser(const ParserContext& context, bool require_end_of_line = true)
+    TrivialOpParser(const ParserContext& context)
                 : TrivialOpParser::base_type(trivial_instruction),
                   common(context),
                   diagnostics(common.diagnostics),
@@ -291,12 +291,12 @@ struct TrivialOpParser : qi::grammar<Iterator, OpCode(), AssemblySkipper<Iterato
 
         // Setup rules
         if (require_end_of_line) {
+            opcode = qi::no_case[qi::lexeme[opcodes_trivial >> &ascii::space]];
+            trivial_instruction = opcode > end_of_statement;
+        } else {
             opcode = qi::no_case[qi::lexeme[opcodes_trivial | opcodes_compare | opcodes_float[0]
                                             | opcodes_float[0] | opcodes_float[0] | opcodes_float[0]
                                             | opcodes_flowcontrol[0] | opcodes_flowcontrol[1] >> &ascii::space]];
-            trivial_instruction = opcode > end_of_statement;
-        } else {
-            opcode = qi::no_case[qi::lexeme[opcodes_trivial]] >> &ascii::space;
             trivial_instruction = opcode;
         }
 
@@ -680,7 +680,7 @@ struct DeclarationParser : qi::grammar<Iterator, StatementDeclaration(), Assembl
 struct Parser::ParserImpl {
     using Iterator = std::string::iterator;
 
-    ParserImpl(const ParserContext& context) : label(context), plain_instruction(context, false),
+    ParserImpl(const ParserContext& context) : label(context), plain_instruction(context),
                                                simple_instruction(context), instruction(context),
                                                compare(context), flow_control(context),
                                                declaration(context) {
@@ -746,8 +746,8 @@ private:
     AssemblySkipper<Iterator>   skipper;
 
     LabelParser<Iterator>       label;
-    TrivialOpParser<Iterator>   plain_instruction;
-    TrivialOpParser<Iterator>   simple_instruction;
+    TrivialOpParser<Iterator, false> plain_instruction;
+    TrivialOpParser<Iterator, true>  simple_instruction;
     FloatOpParser<Iterator>     instruction;
     CompareParser<Iterator>     compare;
     FlowControlParser<Iterator> flow_control;
