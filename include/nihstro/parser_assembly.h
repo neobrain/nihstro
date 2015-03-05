@@ -294,8 +294,8 @@ struct Parser {
     Parser(const ParserContext& context);
     ~Parser();
 
-    // Skip whitespaces, blank lines, and comments
-    void Skip(Iterator& begin, Iterator end);
+    // Skip whitespaces, blank lines, and comments; returns number of line breaks skipped.
+    unsigned Skip(Iterator& begin, Iterator end);
 
     // Skip to the next line
     void SkipSingleLine(Iterator& begin, Iterator end);

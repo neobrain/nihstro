@@ -305,11 +305,12 @@ int main(int argc, char* argv[])
     std::string input_code;
     std::string::iterator begin;
     std::string::iterator preparse_begin;
-
-    try {
+    unsigned code_line = 0;
 
     std::string output_filename = argv[1];
     std::string input_filename = argv[2];
+
+    try {
 
     std::ifstream input_file(input_filename);
     if (input_file)
@@ -390,15 +391,9 @@ int main(int argc, char* argv[])
 
     // First off, build label table via preprocessing
     begin = input_code.begin();
-    ParserContext labelcontext = context;
     while (begin != input_code.end()) {
-        Parser parser(labelcontext);
+        Parser parser(context);
         StatementLabel statement_label;
-        FloatOpInstruction statement_instruction;
-        CompareInstruction compare_instruction;
-        FlowControlInstruction statement_flow_control;
-        StatementDeclaration statement_declaration;
-        OpCode statement_simple;
         OpCode opcode;
 
         parser.Skip(begin, input_code.end());
@@ -430,10 +425,11 @@ int main(int argc, char* argv[])
     }
 
     begin = input_code.begin();
+    preparse_begin = begin;
 
     Parser parser(context);
     program_write_offset = 0;
-    while (true) {
+    while (begin != input_code.end()) {
         StatementLabel statement_label;
         FloatOpInstruction statement_instruction;
         CompareInstruction compare_instruction;
@@ -442,7 +438,7 @@ int main(int argc, char* argv[])
         OpCode statement_simple;
 
         // First off, move iterator past preceding comments, blanks, etc
-        parser.Skip(begin, input_code.end());
+        code_line += parser.Skip(begin, input_code.end());
 
         auto AssertRegisterReadable = [](RegisterType type) {
             if (type != RegisterType::Input && type != RegisterType::Temporary &&
@@ -453,6 +449,8 @@ int main(int argc, char* argv[])
             if (type != RegisterType::Output && type != RegisterType::Temporary)
                 throw "Specified register " + std::to_string((int)type) + " " + std::to_string(index) + " is not writeable (only output and temporary registers are writeable)";
         };
+
+        ++code_line;
 
         // Now perform the actual parsing
         preparse_begin = begin;
@@ -1051,17 +1049,9 @@ int main(int argc, char* argv[])
             }
 
             identifier_table.insert({idname, ret});
-        } else {
-            // TODO: Print error message: Unknown directive
-            break;
+        } else if (begin != input_code.end()) {
+            throw "Unknown instruction format";
         }
-    }
-
-    // Error out if we didn't parse the full file
-    if (begin != input_code.end()) {
-        std::cerr << "Aborting due to parse error..." << std::endl << input_code.substr(begin - input_code.begin()) << std::endl;
-        //std::cerr << "Aborting due to parse error..." << std::endl; // + input_code.substr(begin - input_code.begin());
-        exit(1);
     }
 
     if (!call_stack.empty())
@@ -1175,13 +1165,12 @@ int main(int argc, char* argv[])
         file.write((char*)chunk.pointer, chunk.size);
     }
 
-    } catch(const std::string& err) {
-        std::cerr << "Error: " << err << std::endl;
-        std::cerr << "At: " << input_code.substr(preparse_begin - input_code.begin(), begin - preparse_begin) << std::endl;
-        return 1;
-    } catch(const char* err) {
-        std::cerr << "Error: " << err << std::endl;
-        std::cerr << "At: " << input_code.substr(preparse_begin - input_code.begin(), begin - preparse_begin) << std::endl;
+    } catch (const std::string& err) {
+        throw err.c_str();
+    } catch (const char* err) {
+        std::cerr << input_filename << ":" << code_line << ": error: " << err << std::endl;
+        size_t start_pos = std::distance(input_code.begin(), preparse_begin);
+        std::cerr << "\t" << input_code.substr(start_pos, input_code.find('\n', start_pos) - start_pos) << std::endl;
         return 1;
     }
 
