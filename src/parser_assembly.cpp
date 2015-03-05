@@ -27,7 +27,7 @@
 
 
 // Enable this for detailed XML overview of parser results
-// #define BOOST_SPIRIT_DEBUG
+#define BOOST_SPIRIT_DEBUG
 
 #include <boost/spirit/include/qi.hpp>
 
@@ -172,39 +172,34 @@ struct CommonRules {
         // TODO: Use qi::lexeme[swizzlers] [crashed when I tried, so make this work!]
         swizzle_mask = qi::attr_cast<InputSwizzlerMask, std::vector<InputSwizzlerMask::Component>>(*swizzlers);
 
-        auto identifier_atom = qi::char_("a-zA-Z0-9_");
-        identifier = qi::lexeme[qi::char_("a-zA-Z_") >> -+identifier_atom >> !identifier_atom];
-        known_identifier = qi::lexeme[context.identifiers >> !identifier_atom];
+        identifier = qi::lexeme[qi::char_("a-zA-Z_") >> *qi::char_("a-zA-Z0-9_")];
         peek_identifier = &identifier;
 
         uint_after_sign = qi::uint_; // TODO: NOT dot (or alphanum) after this to prevent floats..., TODO: overflows?
         auto sign_with_uint = signs > uint_after_sign;
-        index_expression_first_term = (qi::attr(+1) >> qi::uint_) | (peek_identifier > known_identifier);
-        index_expression_following_terms = (qi::lit('+') >> peek_identifier > known_identifier) | sign_with_uint;
+        index_expression_first_term = (qi::attr(+1) >> qi::uint_) | (peek_identifier > identifier);
+        index_expression_following_terms = (qi::lit('+') >> peek_identifier > identifier) | sign_with_uint;
         index_expression = (-index_expression_first_term)           // the first element has an optional sign
                             >> (*index_expression_following_terms); // following elements have a mandatory sign
 
-        expression = ((-signs) > peek_identifier > known_identifier) >> (-(qi::lit('[') > index_expression > qi::lit(']'))) >> *(qi::lit('.') > swizzle_mask);
+        expression = ((-signs) > peek_identifier > identifier) >> (-(qi::lit('[') > index_expression > qi::lit(']'))) >> *(qi::lit('.') > swizzle_mask);
 
         // Error handling
         BOOST_SPIRIT_DEBUG_NODE(identifier);
         BOOST_SPIRIT_DEBUG_NODE(uint_after_sign);
         BOOST_SPIRIT_DEBUG_NODE(index_expression);
         BOOST_SPIRIT_DEBUG_NODE(peek_identifier);
-        BOOST_SPIRIT_DEBUG_NODE(known_identifier);
         BOOST_SPIRIT_DEBUG_NODE(expression);
         BOOST_SPIRIT_DEBUG_NODE(swizzle_mask);
 
         diagnostics.Add(swizzle_mask.name(), "Expected swizzle mask after period");
         diagnostics.Add(peek_identifier.name(), "Expected identifier");
-        diagnostics.Add(known_identifier.name(), "Unknown identifier");
         diagnostics.Add(uint_after_sign.name(), "Expected integer number after sign");
         diagnostics.Add(index_expression.name(), "Expected index expression between '[' and ']'");
         diagnostics.Add(expression.name(), "Expected expression of a known identifier");
     }
 
     // Rule-ified symbols, which can be assigned names
-    qi::rule<Iterator, Identifier(),              Skipper> known_identifier;
     qi::rule<Iterator,                            Skipper> peek_identifier;
 
     // Building blocks
@@ -452,7 +447,6 @@ struct FlowControlParser : qi::grammar<Iterator, FlowControlInstruction(), Assem
                   common(context),
                   expression(common.expression),
                   identifier(common.identifier),
-                  known_identifier(common.known_identifier),
                   swizzle_mask(common.swizzle_mask),
                   diagnostics(common.diagnostics) {
 
@@ -473,8 +467,6 @@ struct FlowControlParser : qi::grammar<Iterator, FlowControlInstruction(), Assem
 
         auto comma_rule = qi::lit(',');
         auto blank_rule = qi::omit[ascii::blank];
-
-        // TODO: Only match known labels!
         auto label_rule = identifier.alias();
 
         opcode[0] = qi::lexeme[qi::no_case[opcodes[0]] >> blank_rule];
@@ -484,10 +476,11 @@ struct FlowControlParser : qi::grammar<Iterator, FlowControlInstruction(), Assem
 
         negation = qi::matches[qi::lit("!")];
 
-        condition_input = negation >> known_identifier >> -(qi::lit('.') > swizzle_mask);
+        condition_input = negation >> identifier >> -(qi::lit('.') > swizzle_mask);
 
         // May be a condition involving the conditional codes, or a reference to a uniform
-        condition = (condition_input >> condition_op >> condition_input)
+        // TODO: Make sure we use qi::hold wherever necessary
+        condition = qi::hold[condition_input >> condition_op >> condition_input]
                     | (condition_input >> qi::attr(ConditionOp::JustX) >> qi::attr(ConditionInput{}));
 
         // if condition
@@ -508,6 +501,7 @@ struct FlowControlParser : qi::grammar<Iterator, FlowControlInstruction(), Assem
         BOOST_SPIRIT_DEBUG_NODE(opcode[0]);
         BOOST_SPIRIT_DEBUG_NODE(opcode[1]);
         BOOST_SPIRIT_DEBUG_NODE(negation);
+        BOOST_SPIRIT_DEBUG_NODE(condition_op);
         BOOST_SPIRIT_DEBUG_NODE(condition_input);
         BOOST_SPIRIT_DEBUG_NODE(condition);
 
@@ -530,7 +524,6 @@ struct FlowControlParser : qi::grammar<Iterator, FlowControlInstruction(), Assem
     // Building blocks
     qi::rule<Iterator, Expression(),              Skipper>& expression;
     qi::rule<Iterator, std::string(),             Skipper>& identifier;
-    qi::rule<Iterator, Identifier(),              Skipper>& known_identifier;
     qi::rule<Iterator, InputSwizzlerMask(),       Skipper>& swizzle_mask;
     qi::rule<Iterator, ConditionInput(),          Skipper> condition_input;
     qi::rule<Iterator, Condition(),               Skipper> condition;
@@ -569,7 +562,7 @@ struct DeclarationParser : qi::grammar<Iterator, StatementDeclaration(), Assembl
 
     DeclarationParser(const ParserContext& context)
                 : DeclarationParser::base_type(declaration),
-                  common(context), known_identifier(common.known_identifier),
+                  common(context),
                   identifier(common.identifier), swizzle_mask(common.swizzle_mask),
                   diagnostics(common.diagnostics) {
 
@@ -599,7 +592,7 @@ struct DeclarationParser : qi::grammar<Iterator, StatementDeclaration(), Assembl
         // match a constant or a semantic, and fill the respective other one with a dummy
         const_or_semantic = (dummy_const >> output_semantics_rule) | (constant >> dummy_semantic);
 
-        auto declaration_begin = ((qi::lit('.') > alias_identifier) >> known_identifier >> -(qi::lit('-') > known_identifier) >> -(qi::lit('.') > swizzle_mask));
+        auto declaration_begin = ((qi::lit('.') > alias_identifier) >> identifier >> -(qi::lit('-') > identifier) >> -(qi::lit('.') > swizzle_mask));
 
         // TODO: Would like to use +ascii::blank instead, but somehow that fails to parse lines like ".alias name o2.xy texcoord0" correctly
         auto string_as = qi::omit[qi::no_skip[*/*+*/ascii::blank >> qi::lit("as") >> +ascii::blank]];
@@ -633,7 +626,6 @@ struct DeclarationParser : qi::grammar<Iterator, StatementDeclaration(), Assembl
     qi::symbols<char, OutputRegisterInfo::Type>   output_semantics;
 
     // Rule-ified symbols, which can be assigned names
-    qi::rule<Iterator, Identifier(),              Skipper>& known_identifier;
     qi::rule<Iterator, OutputRegisterInfo::Type(),Skipper> output_semantics_rule;
 
     // Building blocks

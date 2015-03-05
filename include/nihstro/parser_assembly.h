@@ -81,8 +81,7 @@ struct InputSwizzlerMask {
     }
 };
 
-// Identifer index in identifier list
-using Identifier = int;
+using Identifier = std::string;
 
 // A sign, i.e. +1 or -1
 using Sign = int;
@@ -285,8 +284,7 @@ using StatementDeclaration = boost::fusion::vector<std::string /* alias name */,
 
 
 struct ParserContext {
-    // Maps known identifiers to an index to the controller's identifier list
-    boost::spirit::qi::symbols<char, Identifier> identifiers;
+    // There currently is no context
 };
 
 

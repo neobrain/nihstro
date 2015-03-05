@@ -112,9 +112,6 @@ struct Atomic {
     }
 };
 
-// TODO: Support labels as identifiers...
-std::vector<Atomic> identifiers;
-
 struct DestSwizzlerMask {
     DestSwizzlerMask(const InputSwizzlerMask& input) {
         std::fill(component_set, &component_set[4], false);
@@ -178,9 +175,19 @@ static InputSwizzlerMask MergeSwizzleMasks(const InputSwizzlerMask& inner_mask, 
     return out;
 }
 
+static std::map<std::string, Atomic> identifier_table;
+
+static Atomic& LookupIdentifier(const std::string& name) {
+    auto it = identifier_table.find(name);
+    if (it == identifier_table.end())
+        throw "Unknown identifier \"" + name + "\"";
+
+    return it->second;
+}
+
 // Evaluate expression to a particular Atomic
 static Atomic EvaluateExpression(const Expression& expr) {
-    Atomic ret = identifiers[expr.GetIdentifier()];
+    Atomic ret = LookupIdentifier(expr.GetIdentifier());
 
     ret.negate = expr.GetSign() == -1;
     ret.relative_address_source = 0;
@@ -197,11 +204,10 @@ static Atomic EvaluateExpression(const Expression& expr) {
                     throw "May not use more than one register in relative addressing";
                 }
 
-                // TODO: Make sure the referenced identifier is not completely bogus
-                ret.relative_address_source = identifiers[array_index_expression.GetAddressRegisterIdentifier(i)].register_index;
+                ret.relative_address_source = LookupIdentifier(array_index_expression.GetAddressRegisterIdentifier(i)).register_index;
                 if (ret.relative_address_source < (int)RegisterSpace::Address ||
                     ret.relative_address_source > (int)RegisterSpace::AddressEnd) {
-                    throw "Invalid register " + std::to_string(array_index_expression.GetAddressRegisterIdentifier(i))+ " " + std::to_string(ret.relative_address_source) + " used for relative addressing (only a0, a1 and lcnt are valid indexes)";
+                    throw "Invalid register " + array_index_expression.GetAddressRegisterIdentifier(i)+ " (" + std::to_string(ret.relative_address_source) + ") used for relative addressing (only a0, a1 and lcnt are valid indexes)";
                 }
                 ret.relative_address_source -= (int)RegisterSpace::Address - 1; // 0 is reserved for "no dynamic indexing", hence the first address register gets value 1
                 relative_address_set = true;
@@ -218,7 +224,7 @@ static Atomic EvaluateExpression(const Expression& expr) {
 
 // TODO: Provide optimized versions for functions without src2
 // TODO: Support src3 inputs
-size_t FindOrAddSwizzlePattern(std::vector<SwizzlePattern>& swizzle_patterns,
+static size_t FindOrAddSwizzlePattern(std::vector<SwizzlePattern>& swizzle_patterns,
                                const DestSwizzlerMask& dest_mask,
                                const SourceSwizzlerMask& mask_src1,
                                const SourceSwizzlerMask& mask_src2,
@@ -253,7 +259,7 @@ size_t FindOrAddSwizzlePattern(std::vector<SwizzlePattern>& swizzle_patterns,
     return it - swizzle_patterns.begin();
 };
 
-size_t FindOrAddSwizzlePattern(std::vector<SwizzlePattern>& swizzle_patterns,
+static size_t FindOrAddSwizzlePattern(std::vector<SwizzlePattern>& swizzle_patterns,
                                const SourceSwizzlerMask& mask_src1,
                                const SourceSwizzlerMask& mask_src2,
                                bool negate_src1, bool negate_src2) {
@@ -338,8 +344,6 @@ int main(int argc, char* argv[])
 
     ParserContext context;
     for (int i = 0; i <= (int)RegisterSpace::Max; ++i) {
-        identifiers.push_back({i, InputSwizzlerMask::FullMask()});
-
         std::string name;
         if (i >= (int)RegisterSpace::BoolUniform)
             name = "b" + std::to_string(i - (int)RegisterSpace::BoolUniform);
@@ -362,7 +366,7 @@ int main(int argc, char* argv[])
 
         assert(!name.empty());
 
-        context.identifiers.add(name, i);
+        identifier_table.insert({name, {i, InputSwizzlerMask::FullMask()}});
     }
 
     struct CallStackElement {
@@ -438,19 +442,6 @@ int main(int argc, char* argv[])
             ++program_write_offset;
         } else if (parser.ParseFlowControl(begin, input_code.end(), &statement_flow_control)) {
             ++program_write_offset;
-        } else if (parser.ParseDeclaration(begin, input_code.end(), &statement_declaration)) {
-            auto& var = statement_declaration;
-
-            Identifier id;
-            std::string idname;
-
-            id = boost::fusion::at_c<1>(var);
-            idname = boost::fusion::at_c<0>(var);
-
-            Atomic ret = identifiers[id];
-            Identifier new_identifier = identifiers.size();
-            identifiers.push_back(ret);
-            labelcontext.identifiers.add(idname, new_identifier);
         } else {
             parser.SkipSingleLine(begin, input_code.end());
         }
@@ -816,7 +807,7 @@ int main(int argc, char* argv[])
 
             if (statement_flow_control.HasCondition()) {
                 const auto& condition = statement_flow_control.GetCondition();
-                Atomic condition_variable = identifiers[condition.GetFirstInput().GetIdentifier()];
+                Atomic condition_variable = LookupIdentifier(condition.GetFirstInput().GetIdentifier());
                 if (condition_variable.GetType() == RegisterType::ConditionalCode) {
                     // TODO: Make sure swizzle mask is either not set or x or y or xy
                     if (condition.GetFirstInput().HasSwizzleMask())
@@ -845,7 +836,7 @@ int main(int argc, char* argv[])
                             throw "May only involve the x and y components in conditions";
                         }
                     } else {
-                        Atomic second_condition_variable = identifiers[condition.GetSecondInput().GetIdentifier()];
+                        Atomic second_condition_variable = LookupIdentifier(condition.GetSecondInput().GetIdentifier());
                         if (second_condition_variable.GetType() != RegisterType::ConditionalCode)
                             throw "Combining conditions via && and || only works for conditions based on two conditional codes";
 
@@ -978,7 +969,7 @@ int main(int argc, char* argv[])
             Identifier id = boost::fusion::at_c<1>(var);
             Identifier end_id = (boost::fusion::at_c<2>(var)) ? *boost::fusion::at_c<2>(var) : id;
             bool aliases_range = (id != end_id);
-            Atomic ret = identifiers[id];
+            Atomic ret = LookupIdentifier(id);
 
             bool has_swizzle_mask = boost::fusion::at_c<3>(var);
             ret.mask = has_swizzle_mask ? *boost::fusion::at_c<3>(var) : InputSwizzlerMask::FullMask();
@@ -989,7 +980,7 @@ int main(int argc, char* argv[])
             if (std::find(symbol_table.begin(), symbol_table.end(), idname) != symbol_table.end())
                 throw "Symbol name \"" + idname + "\" already defined!";
 
-            if (identifiers[id].GetType() != identifiers[end_id].GetType())
+            if (ret.GetType() != LookupIdentifier(end_id).GetType())
                 throw "May not specify different register types for alias range limits";
 
             if (has_swizzle_mask && aliases_range)
@@ -1015,7 +1006,7 @@ int main(int argc, char* argv[])
 
                 ConstantInfo constant;
                 constant.type = ConstantInfo::Float;
-                constant.regid = identifiers[id].GetIndex();
+                constant.regid = LookupIdentifier(id).GetIndex();
 
                 constant.f.x = to_float24(values[0]);
                 constant.f.y = to_float24(values[1]);
@@ -1035,7 +1026,7 @@ int main(int argc, char* argv[])
 
                 OutputRegisterInfo output;
                 output.type = *output_semantic;
-                output.id = identifiers[id].GetIndex();
+                output.id = LookupIdentifier(id).GetIndex();
                 output.component_mask = 0;
 
                 for (int i = 0; i < ret.mask.num_components; ++i) {
@@ -1070,16 +1061,14 @@ int main(int argc, char* argv[])
 
                 UniformInfo uniform;
                 uniform.basic.symbol_offset = [&]() { size_t ret = 0; for (auto& s : symbol_table) { ret +=s.length()+1; } return ret;}();
-                uniform.basic.reg_start = ToCustomSpace(identifiers[id]);
-                uniform.basic.reg_end = ToCustomSpace(identifiers[end_id]);
+                uniform.basic.reg_start = ToCustomSpace(LookupIdentifier(id));
+                uniform.basic.reg_end = ToCustomSpace(LookupIdentifier(end_id));
                 uniform_table.push_back(uniform);
 
                 symbol_table.push_back(idname);
             }
 
-            Identifier new_identifier = identifiers.size();
-            identifiers.push_back(ret);
-            context.identifiers.add(idname, new_identifier);
+            identifier_table.insert({idname, ret});
         } else {
             // TODO: Print error message: Unknown directive
             break;
