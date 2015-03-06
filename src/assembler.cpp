@@ -390,6 +390,7 @@ int main(int argc, char* argv[])
     };
 
     // First off, build label table via preprocessing
+    try {
     begin = input_code.begin();
     while (begin != input_code.end()) {
         Parser parser(context);
@@ -411,18 +412,26 @@ int main(int argc, char* argv[])
             CustomLabelInfo label_info = { program_write_offset, symbol_table_index };
             label_table.push_back(label_info);
         } else if (parser.ParseOpCode(begin, input_code.end(), &opcode)) {
+            // Increment program address for anything which will generate a non-pseudo-instruction.
             if (static_cast<uint32_t>((OpCode::Id)opcode) < static_cast<uint32_t>(OpCode::Id::PSEUDO_INSTRUCTION_START) ||
                 opcode == OpCode::Id::GEN_IF || opcode == OpCode::Id::GEN_CALL ||
                 opcode == OpCode::Id::GEN_JMP) {
                 ++program_write_offset;
             }
 
-            // TODO: Should really do this, but it breaks stuff currently...
-            //parser.SkipSingleLine(begin, input_code.end());
+            // TODO: This might cause issues with trivial opcodes...
+            parser.SkipSingleLine(begin, input_code.end());
         } else {
+            // If it's neither a (recognized) instruction nor a label, skip this line and complain later if need be
             parser.SkipSingleLine(begin, input_code.end());
         }
     }
+    } catch (...) {
+        // TODO: "endmain" declarations followed by EOF don't get parsed currently. Not sure why, yet.
+        std::cerr << "Error while parsing for labels. Did you format a label declaration incorrectly? Note that all label declarations need to be followed by a line break." << std::endl;
+        exit(1);
+    }
+
 
     begin = input_code.begin();
     preparse_begin = begin;
@@ -1050,7 +1059,9 @@ int main(int argc, char* argv[])
 
             identifier_table.insert({idname, ret});
         } else if (begin != input_code.end()) {
-            throw "Unknown instruction format";
+            // TODO: Actually, this should be a hint about invalid intruction formats, but on Windows even EOF triggers this for some reason.
+            std::cerr << "Warning: Unknown instruction format, treating like EOF..." << std::endl;
+            break;
         }
     }
 
@@ -1140,7 +1151,7 @@ int main(int argc, char* argv[])
     dvle.label_table_offset = write_offset - dvlb.dvle_offset;
     dvle.label_table_size = label_table.size();
     std::vector<LabelInfo> final_label_table;
-    final_label_table.resize(label_table.size());
+    final_label_table.reserve(label_table.size());
     for (auto& label : label_table) {
         LabelInfo info;
         info.id = 0; // Not sure what this should be
@@ -1165,9 +1176,12 @@ int main(int argc, char* argv[])
         file.write((char*)chunk.pointer, chunk.size);
     }
 
-    } catch (const std::string& err) {
-        throw err.c_str();
     } catch (const char* err) {
+        std::cerr << input_filename << ":" << code_line << ": error: " << err << std::endl;
+        size_t start_pos = std::distance(input_code.begin(), preparse_begin);
+        std::cerr << "\t" << input_code.substr(start_pos, input_code.find('\n', start_pos) - start_pos) << std::endl;
+    }
+    catch (const std::string& err) {
         std::cerr << input_filename << ":" << code_line << ": error: " << err << std::endl;
         size_t start_pos = std::distance(input_code.begin(), preparse_begin);
         std::cerr << "\t" << input_code.substr(start_pos, input_code.find('\n', start_pos) - start_pos) << std::endl;

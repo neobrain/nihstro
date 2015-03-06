@@ -31,12 +31,6 @@
 
 #include <boost/spirit/include/qi.hpp>
 
-#include <boost/spirit/include/phoenix_core.hpp>
-#include <boost/spirit/include/phoenix_operator.hpp>
-#include <boost/spirit/include/phoenix_fusion.hpp>
-#include <boost/spirit/include/phoenix_stl.hpp>
-#include <boost/spirit/include/phoenix_object.hpp>
-
 #include "nihstro/parser_assembly.h"
 
 #include "nihstro/shader_binary.h"
@@ -105,7 +99,7 @@ struct ErrorHandler
         err << diagnostic << std::endl
             << std::string(4, ' ') << std::string(begin, newline_iterator) << std::endl
             << std::string(4 + std::distance(begin, where), ' ') << '^' << std::endl;
-        throw err.str().c_str();
+        throw err.str();
     }
 };
 phoenix::function<ErrorHandler> error_handler;
@@ -307,7 +301,7 @@ struct TrivialOpParser : qi::grammar<Iterator, OpCode(), AssemblySkipper<Iterato
             trivial_instruction = opcode > end_of_statement;
         } else {
             opcode = qi::no_case[qi::lexeme[opcodes_trivial | opcodes_compare | opcodes_float[0]
-                                            | opcodes_float[0] | opcodes_float[0] | opcodes_float[0]
+                                            | opcodes_float[1] | opcodes_float[2] | opcodes_float[3]
                                             | opcodes_flowcontrol[0] | opcodes_flowcontrol[1] >> &ascii::space]];
             trivial_instruction = opcode;
         }
@@ -592,11 +586,14 @@ struct LabelParser : qi::grammar<Iterator, StatementLabel(), AssemblySkipper<Ite
     LabelParser(const ParserContext& context)
                 : LabelParser::base_type(label), common(context),
                   end_of_statement(common.end_of_statement),
-                  identifier(common.identifier){
+                  identifier(common.identifier),
+                  diagnostics(common.diagnostics) {
 
         label = identifier >> qi::lit(':') > end_of_statement;
 
         BOOST_SPIRIT_DEBUG_NODE(label);
+
+        qi::on_error<qi::fail>(label, error_handler(phoenix::ref(diagnostics), _1, _2, _3, _4));
     }
 
     CommonRules<Iterator> common;
@@ -605,6 +602,8 @@ struct LabelParser : qi::grammar<Iterator, StatementLabel(), AssemblySkipper<Ite
 
     qi::rule<Iterator, std::string(),             Skipper>& identifier;
     qi::rule<Iterator, std::string(),             Skipper>  label;
+
+    Diagnostics diagnostics;
 };
 
 template<typename Iterator>
