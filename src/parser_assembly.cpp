@@ -27,7 +27,7 @@
 
 
 // Enable this for detailed XML overview of parser results
-#define BOOST_SPIRIT_DEBUG
+// #define BOOST_SPIRIT_DEBUG
 
 #include <boost/spirit/include/qi.hpp>
 
