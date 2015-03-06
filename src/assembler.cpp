@@ -994,6 +994,11 @@ int main(int argc, char* argv[])
                 // TODO: Support non-float constants
 
                 ConstantInfo constant;
+                constant.full_first_word = 0;
+                constant.value_hex[0] = 0;
+                constant.value_hex[1] = 0;
+                constant.value_hex[2] = 0;
+                constant.value_hex[3] = 0;
                 constant.type = ConstantInfo::Float;
                 constant.regid = LookupIdentifier(id).GetIndex();
 
@@ -1014,6 +1019,7 @@ int main(int argc, char* argv[])
                 // TODO: Make sure the declared output actually gets set (otherwise the GPU freezes)
 
                 OutputRegisterInfo output;
+                output.hex = 0;
                 output.type = *output_semantic;
                 output.id = LookupIdentifier(id).GetIndex();
                 output.component_mask = 0;
@@ -1154,6 +1160,7 @@ int main(int argc, char* argv[])
     final_label_table.reserve(label_table.size());
     for (auto& label : label_table) {
         LabelInfo info;
+        memset(&info, 0, sizeof(info));
         info.id = 0; // Not sure what this should be
         info.program_offset = label.program_offset;
         info.unk = 0; // Not sure what this should be

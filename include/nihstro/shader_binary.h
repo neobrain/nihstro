@@ -120,14 +120,16 @@ struct ConstantInfo {
     };
 
     union {
+        uint32_t full_first_word;
+
         BitField<0, 2, Type> type;
 
         BitField<16, 8, uint32_t> regid;
-
-        uint32_t full_first_word;
     };
 
     union {
+        uint32_t value_hex[4];
+
         BitField<0, 1, uint32_t> b;
 
         struct {
