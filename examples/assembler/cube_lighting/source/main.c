@@ -156,6 +156,7 @@ void renderFrame()
 
 	uint32_t val = ((num_lights-1u))|(0<<8)|(light_size<<16u);
 
+	// Set int uniforms
 	GPUCMD_AddSingleParam(0x000F0282, val);
 	GPUCMD_AddSingleParam(0x000F02b2, val);
 

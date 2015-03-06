@@ -2,11 +2,11 @@
 .alias myconst c32 as (1.0, 0.0, 0.5, 1.0)
 
 // setup output map
-.alias outpos  o0    as position
-.alias outcol  o1    as color
-.alias outtex0 o2.xy as texcoord0
-.alias outtex1 o3.xy as texcoord1
-.alias outtex2 o4.xy as texcoord2
+.alias outpos  o0      as position
+.alias outcol  o1      as color
+.alias outtex0 o2.xyzw as texcoord0 // Would like to use .xy instead, but this is not supported by ctrulib currently
+.alias outtex1 o3.xyzw as texcoord1
+.alias outtex2 o4.xyzw as texcoord2
 
 // setup uniform map, for use with SHDR_GetUniformRegister
 .alias projection     c0-c3
@@ -38,9 +38,9 @@ proj:  // result.pos = projMtx * tempreg
 	dp4 o0.w,  projection[3],  r0
 
 tex:  // result.texcoord = in.texcoord
-	mov outtex0,  v1.xy
-	mov outtex1,  c20.yy
-	mov outtex2,  c20.yy
+	mov outtex0,  v1.xyzw
+	mov outtex1,  c20.yyyw
+	mov outtex2,  c20.yyyw
 
 lighting: // color = sum over all lights(diffuse * clamp(dot(L,N),0) + ambient)
 	mov r0, myconst.yyyw
