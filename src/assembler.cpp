@@ -1176,14 +1176,6 @@ int main(int argc, char* argv[])
     for (auto& symbol : symbol_table)
         QueueForWriting((uint8_t*)symbol.c_str(), symbol.length() + 1);
 
-    // Write data to file
-    static int dump_index = 0;
-    std::ofstream file(output_filename, std::ios_base::out | std::ios_base::binary);
-
-    for (auto& chunk : writing_queue) {
-        file.write((char*)chunk.pointer, chunk.size);
-    }
-
     } catch (const char* err) {
         std::cerr << input_filename << ":" << code_line << ": error: " << err << std::endl;
         size_t start_pos = std::distance(input_code.begin(), preparse_begin);
@@ -1194,6 +1186,18 @@ int main(int argc, char* argv[])
         size_t start_pos = std::distance(input_code.begin(), preparse_begin);
         std::cerr << "\t" << input_code.substr(start_pos, input_code.find('\n', start_pos) - start_pos) << std::endl;
         return 1;
+    }
+
+    // Write data to file
+    std::ofstream file(output_filename, std::ios_base::out | std::ios_base::binary);
+
+    if (!file) {
+        std::cerr << "Could not open output file " << output_filename << std::endl;
+        return 1;
+    }
+
+    for (auto& chunk : writing_queue) {
+        file.write((char*)chunk.pointer, chunk.size);
     }
 
     return 0;
