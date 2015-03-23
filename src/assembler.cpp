@@ -961,7 +961,7 @@ int main(int argc, char* argv[])
             bool aliases_range = (id != end_id);
             Atomic ret = LookupIdentifier(id);
 
-            bool has_swizzle_mask = boost::fusion::at_c<3>(var);
+            bool has_swizzle_mask = static_cast<bool>(boost::fusion::at_c<3>(var));
             ret.mask = has_swizzle_mask ? *boost::fusion::at_c<3>(var) : InputSwizzlerMask::FullMask();
 
             std::vector<float>& values = boost::fusion::at_c<0>(boost::fusion::at_c<4>(var));
