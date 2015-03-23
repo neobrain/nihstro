@@ -310,8 +310,6 @@ int main(int argc, char* argv[])
     std::string output_filename = argv[1];
     std::string input_filename = argv[2];
 
-    try {
-
     std::ifstream input_file(input_filename);
     if (input_file)
     {
@@ -323,8 +321,11 @@ int main(int argc, char* argv[])
     }
     else
     {
-        throw "Could not open input file";
+        std::cerr << "Could not open input file " << input_filename << std::endl;
+        return 1;
     }
+
+    try {
 
     std::vector<Instruction> instructions;
     std::vector<SwizzlePattern> swizzle_patterns;
