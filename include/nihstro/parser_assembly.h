@@ -130,7 +130,7 @@ struct Expression : boost::fusion::vector<boost::fusion::vector<boost::optional<
     }
 
     bool HasIndexExpression() const {
-        return RawIndex();
+        return static_cast<bool>(RawIndex());
     }
 
     const IndexExpression& GetIndexExpression() const {
@@ -169,7 +169,7 @@ struct ConditionInput : boost::fusion::vector<bool, Identifier, boost::optional<
     }
 
     bool HasSwizzleMask() const {
-        return boost::fusion::at_c<2>(*this);
+        return static_cast<bool>(boost::fusion::at_c<2>(*this));
     }
 
     const InputSwizzlerMask& GetSwizzleMask() const {
@@ -258,7 +258,7 @@ struct FlowControlInstruction : boost::fusion::vector<OpCode,
     }
 
     bool HasReturnLabel() const {
-        return boost::fusion::at_c<2>(*this);
+        return static_cast<bool>(boost::fusion::at_c<2>(*this));
     }
 
     const std::string& GetReturnLabel() const {
@@ -266,7 +266,7 @@ struct FlowControlInstruction : boost::fusion::vector<OpCode,
     }
 
     bool HasCondition() const {
-        return boost::fusion::at_c<3>(*this);
+        return static_cast<bool>(boost::fusion::at_c<3>(*this));
     }
 
     const Condition& GetCondition() const {
