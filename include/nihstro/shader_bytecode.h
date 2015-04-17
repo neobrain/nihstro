@@ -380,65 +380,66 @@ struct OpCode {
     }
 
     const Info& GetInfo() const {
-        static OpCode::Info info_table[] =
-        {
-            { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments, "add" }
-            , { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments, "dp3" }
-            , { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments, "dp4" }
-            , { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments, "dph" }
-            , { OpCode::Type::Unknown, 0, "UNK" }
-            , { OpCode::Type::Arithmetic, OpCode::Info::OneArgument, "exp" }
-            , { OpCode::Type::Arithmetic, OpCode::Info::OneArgument, "log" }
-            , { OpCode::Type::Unknown, 0, "UNK" }
-            , { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments, "mul" }
-            , { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments, "sge" }
-            , { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments, "slt" }
-            , { OpCode::Type::Arithmetic, OpCode::Info::OneArgument, "flr" }
-            , { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments, "max" }
-            , { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments, "min" }
-            , { OpCode::Type::Arithmetic, OpCode::Info::OneArgument, "rcp" }
-            , { OpCode::Type::Arithmetic, OpCode::Info::OneArgument, "rsq" }
-            , { OpCode::Type::Unknown, 0, "UNK" }
-            , { OpCode::Type::Unknown, 0, "UNK" }
-            , { OpCode::Type::Arithmetic, OpCode::Info::MOVA, "mova" }
-            , { OpCode::Type::Arithmetic, OpCode::Info::OneArgument, "mov" }
-            , { OpCode::Type::Unknown, 0, "UNK" }
-            , { OpCode::Type::Unknown, 0, "UNK" }
-            , { OpCode::Type::Unknown, 0, "UNK" }
-            , { OpCode::Type::Unknown, 0, "UNK" }
-            , { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments | OpCode::Info::SrcInversed, "dphi" }
-            , { OpCode::Type::Unknown, 0, "UNK" }
-            , { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments | OpCode::Info::SrcInversed, "sgei" }
-            , { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments | OpCode::Info::SrcInversed, "slti" }
-            , { OpCode::Type::Unknown, 0, "UNK" }
-            , { OpCode::Type::Unknown, 0, "UNK" }
-            , { OpCode::Type::Unknown, 0, "UNK" }
-            , { OpCode::Type::Unknown, 0, "UNK" }
-            , { OpCode::Type::Unknown, 0, "UNK" }
-            , { OpCode::Type::Trivial, 0, "nop" }
-            , { OpCode::Type::Trivial, 0, "end" }
-            , { OpCode::Type::Conditional, OpCode::Info::BREAKC, "breakc" }
-            , { OpCode::Type::Conditional, OpCode::Info::CALL, "call" }
-            , { OpCode::Type::Conditional, OpCode::Info::CALLC, "callc" }
-            , { OpCode::Type::UniformFlowControl, OpCode::Info::CALLU, "callu" }
-            , { OpCode::Type::UniformFlowControl, OpCode::Info::IFU, "ifu" }
-            , { OpCode::Type::Conditional, OpCode::Info::IFC, "ifc" }
-            , { OpCode::Type::UniformFlowControl, OpCode::Info::LOOP, "loop" }
-            , { OpCode::Type::Trivial, 0, "emit" }
-            , { OpCode::Type::SetEmit, 0, "setemit" }
-            , { OpCode::Type::Conditional, OpCode::Info::JMPC, "jmpc" }
-            , { OpCode::Type::Conditional, OpCode::Info::JMPU, "jmpu" }
-            , { OpCode::Type::Arithmetic, OpCode::Info::Compare, "cmp" }
-            , { OpCode::Type::Unknown, 0, "UNK" }
-            , { OpCode::Type::MultiplyAdd, OpCode::Info::SrcInversed, "madi" }
-            , { OpCode::Type::Unknown, 0, "UNK" }
-            , { OpCode::Type::Unknown, 0, "UNK" }
-            , { OpCode::Type::Unknown, 0, "UNK" }
-            , { OpCode::Type::Unknown, 0, "UNK" }
-            , { OpCode::Type::Unknown, 0, "UNK" }
-            , { OpCode::Type::Unknown, 0, "UNK" }
-            , { OpCode::Type::Unknown, 0, "UNK" }
-            , { OpCode::Type::MultiplyAdd, 0, "mad" }
+        static const OpCode::Info unknown_instruction = { OpCode::Type::Unknown, 0, "UNK" };
+        static const OpCode::Info dummy = { OpCode::Type::Unknown, 0, "DMY" };
+        static OpCode::Info info_table[] =  {
+            { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments, "add" },
+            { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments, "dp3" },
+            { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments, "dp4" },
+            { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments, "dph" },
+            dummy,
+            { OpCode::Type::Arithmetic, OpCode::Info::OneArgument, "exp" },
+            { OpCode::Type::Arithmetic, OpCode::Info::OneArgument, "log" },
+            unknown_instruction,
+            { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments, "mul" },
+            { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments, "sge" },
+            { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments, "slt" },
+            { OpCode::Type::Arithmetic, OpCode::Info::OneArgument, "flr" },
+            { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments, "max" },
+            { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments, "min" },
+            { OpCode::Type::Arithmetic, OpCode::Info::OneArgument, "rcp" },
+            { OpCode::Type::Arithmetic, OpCode::Info::OneArgument, "rsq" },
+            unknown_instruction,
+            unknown_instruction,
+            { OpCode::Type::Arithmetic, OpCode::Info::MOVA, "mova" },
+            { OpCode::Type::Arithmetic, OpCode::Info::OneArgument, "mov" },
+            unknown_instruction,
+            unknown_instruction,
+            unknown_instruction,
+            unknown_instruction,
+            { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments | OpCode::Info::SrcInversed, "dphi" },
+            unknown_instruction,
+            { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments | OpCode::Info::SrcInversed, "sgei" },
+            { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments | OpCode::Info::SrcInversed, "slti" },
+            unknown_instruction,
+            unknown_instruction,
+            unknown_instruction,
+            unknown_instruction,
+            unknown_instruction,
+            { OpCode::Type::Trivial, 0, "nop" },
+            { OpCode::Type::Trivial, 0, "end" },
+            { OpCode::Type::Conditional, OpCode::Info::BREAKC, "breakc" },
+            { OpCode::Type::Conditional, OpCode::Info::CALL, "call" },
+            { OpCode::Type::Conditional, OpCode::Info::CALLC, "callc" },
+            { OpCode::Type::UniformFlowControl, OpCode::Info::CALLU, "callu" },
+            { OpCode::Type::UniformFlowControl, OpCode::Info::IFU, "ifu" },
+            { OpCode::Type::Conditional, OpCode::Info::IFC, "ifc" },
+            { OpCode::Type::UniformFlowControl, OpCode::Info::LOOP, "loop" },
+            { OpCode::Type::Trivial, 0, "emit" },
+            { OpCode::Type::SetEmit, 0, "setemit" },
+            { OpCode::Type::Conditional, OpCode::Info::JMPC, "jmpc" },
+            { OpCode::Type::Conditional, OpCode::Info::JMPU, "jmpu" },
+            { OpCode::Type::Arithmetic, OpCode::Info::Compare, "cmp" },
+            dummy,
+            { OpCode::Type::MultiplyAdd, OpCode::Info::SrcInversed, "madi" },
+            dummy,
+            dummy,
+            dummy,
+            dummy,
+            dummy,
+            dummy,
+            dummy,
+            { OpCode::Type::MultiplyAdd, 0, "mad" }
         };
         return info_table[(int)EffectiveOpCode()];
     }
