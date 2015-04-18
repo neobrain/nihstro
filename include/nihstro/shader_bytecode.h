@@ -387,7 +387,7 @@ struct OpCode {
             { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments, "dp3" },
             { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments, "dp4" },
             { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments, "dph" },
-            dummy,
+            unknown_instruction,
             { OpCode::Type::Arithmetic, OpCode::Info::OneArgument, "exp" },
             { OpCode::Type::Arithmetic, OpCode::Info::OneArgument, "log" },
             unknown_instruction,
