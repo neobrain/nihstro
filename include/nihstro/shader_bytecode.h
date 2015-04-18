@@ -382,7 +382,7 @@ struct OpCode {
     const Info& GetInfo() const {
         static const OpCode::Info unknown_instruction = { OpCode::Type::Unknown, 0, "UNK" };
         static const OpCode::Info dummy = { OpCode::Type::Unknown, 0, "DMY" };
-        static OpCode::Info info_table[] =  {
+        static const OpCode::Info info_table[] =  {
             { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments, "add" },
             { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments, "dp3" },
             { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments, "dp4" },
