@@ -325,6 +325,20 @@ int main(int argc, char* argv[])
         return 1;
     }
 
+    struct StuffToWrite {
+        uint8_t* pointer;
+        uint32_t size;
+    };
+    std::vector<StuffToWrite> writing_queue;
+    uint32_t write_offset = 0;
+
+    auto QueueForWriting = [&writing_queue,&write_offset](uint8_t* pointer, uint32_t size) {
+        writing_queue.push_back({pointer, size});
+        uint32_t old_write_offset = write_offset;
+        write_offset += size;
+        return old_write_offset;
+    };
+
     try {
 
     std::vector<Instruction> instructions;
@@ -1091,20 +1105,6 @@ int main(int argc, char* argv[])
                                }
                                throw "No main label specified";
                            }();
-
-    struct StuffToWrite {
-        uint8_t* pointer;
-        uint32_t size;
-    };
-    std::vector<StuffToWrite> writing_queue;
-    uint32_t write_offset = 0;
-
-    auto QueueForWriting = [&writing_queue,&write_offset](uint8_t* pointer, uint32_t size) {
-        writing_queue.push_back({pointer, size});
-        uint32_t old_write_offset = write_offset;
-        write_offset += size;
-        return old_write_offset;
-    };
 
     struct {
         DVLBHeader header;
