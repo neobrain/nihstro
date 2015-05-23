@@ -105,6 +105,14 @@ BOOST_FUSION_ADAPT_STRUCT(
 )
 
 BOOST_FUSION_ADAPT_STRUCT(
+    SetEmitInstruction,
+    (OpCode, opcode)
+    (unsigned, vertex_id)
+    (boost::optional<bool>, primitive_flag)
+    (boost::optional<bool>, invert_flag)
+)
+
+BOOST_FUSION_ADAPT_STRUCT(
     StatementDeclaration::Extra,
     (std::vector<float>, constant_value)
     (boost::optional<OutputRegisterInfo::Type>, output_semantic)
@@ -270,6 +278,9 @@ struct CommonRules {
                    ( "jmp",      OpCode::Id::GEN_JMP  )
                    ( "call",     OpCode::Id::GEN_CALL );
 
+        opcodes_setemit.add
+                   ( "setemitraw", OpCode::Id::SETEMIT );
+
         signs.add( "+", +1)
                  ( "-", -1);
 
@@ -328,6 +339,7 @@ struct CommonRules {
     qi::symbols<char, OpCode> opcodes_compare;
     std::array<qi::symbols<char, OpCode>, 4> opcodes_float; // indexed by number of arguments
     std::array<qi::symbols<char, OpCode>, 2> opcodes_flowcontrol;
+    qi::symbols<char, OpCode> opcodes_setemit;
 
     qi::symbols<char, int>    signs;
 
@@ -646,6 +658,57 @@ struct FlowControlParser : qi::grammar<Iterator, FlowControlInstruction(), Assem
 };
 
 template<typename Iterator>
+struct SetEmitParser : qi::grammar<Iterator, SetEmitInstruction(), AssemblySkipper<Iterator>> {
+    using Skipper = AssemblySkipper<Iterator>;
+
+    SetEmitParser(const ParserContext& context)
+                : SetEmitParser::base_type(setemit_instruction),
+                  common(context),
+                  end_of_statement(common.end_of_statement),
+                  diagnostics(common.diagnostics),
+                  opcodes_setemit(common.opcodes_setemit) {
+
+        // Setup rules
+
+        auto comma_rule = qi::lit(',');
+
+        opcode = qi::lexeme[qi::no_case[opcodes_setemit] >> &ascii::space];
+
+        auto prim_flag = qi::lit("prim") >> &(!ascii::alnum) >> qi::attr(true);
+        auto inv_flag = qi::lit("inv") >> &(!ascii::alnum) >> qi::attr(true);
+
+        setemit_instruction = ((opcode > qi::uint_)
+                              >> ((comma_rule >> prim_flag) ^ (comma_rule >> inv_flag)))
+                              > end_of_statement;
+
+        // Error handling
+        BOOST_SPIRIT_DEBUG_NODE(opcode);
+        BOOST_SPIRIT_DEBUG_NODE(setemit_instruction);
+
+        qi::on_error<qi::fail>(setemit_instruction, error_handler(phoenix::ref(diagnostics), _1, _2, _3, _4));
+    }
+
+    CommonRules<Iterator> common;
+
+    qi::symbols<char, OpCode>& opcodes_setemit;
+
+    // Rule-ified symbols, which can be assigned debug names
+    qi::rule<Iterator, OpCode(),                  Skipper> opcode;
+
+    // Building blocks
+    qi::rule<Iterator,                            Skipper>& end_of_statement;
+
+    // Compounds
+    qi::rule<Iterator, SetEmitInstruction(),  Skipper> setemit_instruction;
+
+    // Utility
+    qi::rule<Iterator,                            Skipper> not_comma;
+    qi::rule<Iterator, bool(),                    Skipper> negation;
+
+    Diagnostics diagnostics;
+};
+
+template<typename Iterator>
 struct LabelParser : qi::grammar<Iterator, StatementLabel(), AssemblySkipper<Iterator>> {
     using Skipper = AssemblySkipper<Iterator>;
 
@@ -760,7 +823,7 @@ struct Parser::ParserImpl {
     ParserImpl(const ParserContext& context) : label(context), plain_instruction(context),
                                                simple_instruction(context), instruction(context),
                                                compare(context), flow_control(context),
-                                               declaration(context) {
+                                               setemit(context), declaration(context) {
     }
 
     unsigned Skip(Iterator& begin, Iterator end) {
@@ -813,6 +876,12 @@ struct Parser::ParserImpl {
         return phrase_parse(begin, end, flow_control, skipper, *content);
     }
 
+    bool ParseSetEmit(Iterator& begin, Iterator end, SetEmitInstruction* content) {
+        assert(content != nullptr);
+
+        return phrase_parse(begin, end, setemit, skipper, *content);
+    }
+
     bool ParseDeclaration(Iterator& begin, Iterator end, StatementDeclaration* content) {
         assert(content != nullptr);
 
@@ -828,6 +897,7 @@ private:
     FloatOpParser<Iterator>     instruction;
     CompareParser<Iterator>     compare;
     FlowControlParser<Iterator> flow_control;
+    SetEmitParser<Iterator> setemit;
     DeclarationParser<Iterator> declaration;
 };
 
@@ -867,6 +937,10 @@ bool Parser::ParseCompare(Iterator& begin, Iterator end, CompareInstruction* con
 
 bool Parser::ParseFlowControl(Iterator& begin, Iterator end, FlowControlInstruction* content) {
     return impl->ParseFlowControl(begin, end, content);
+}
+
+bool Parser::ParseSetEmit(Iterator& begin, Iterator end, SetEmitInstruction* content) {
+    return impl->ParseSetEmit(begin, end, content);
 }
 
 bool Parser::ParseDeclaration(Iterator& begin, Iterator end, StatementDeclaration* declaration) {

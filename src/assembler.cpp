@@ -444,6 +444,7 @@ int main(int argc, char* argv[])
         FloatOpInstruction statement_instruction;
         CompareInstruction compare_instruction;
         FlowControlInstruction statement_flow_control;
+        SetEmitInstruction statement_setemit;
         StatementDeclaration statement_declaration;
         OpCode statement_simple;
 
@@ -949,6 +950,15 @@ int main(int argc, char* argv[])
                 shinst.flow_control.dest_offset = LookupLableAddress(statement_flow_control.GetTargetLabel());
             }
 
+            instructions.push_back(shinst);
+            ++program_write_offset;
+        } else if (parser.ParseSetEmit(begin, input_code.end(), &statement_setemit)) {
+            Instruction shinst;
+            shinst.hex = 0;
+            shinst.opcode = statement_setemit.opcode;
+            shinst.setemit.vertex_id = statement_setemit.vertex_id;
+            shinst.setemit.prim_emit = static_cast<bool>(statement_setemit.primitive_flag);
+            shinst.setemit.winding   = static_cast<bool>(statement_setemit.invert_flag);
             instructions.push_back(shinst);
             ++program_write_offset;
         } else if (parser.ParseDeclaration(begin, input_code.end(), &statement_declaration)) {

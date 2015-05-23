@@ -590,7 +590,7 @@ union Instruction {
                 return src2i;
             }
         }
-        
+
         const SourceRegister GetSrc3(bool is_inverted) const {
             if (!is_inverted) {
                 return src3;
@@ -604,12 +604,18 @@ union Instruction {
         BitField<0x05, 0x5, SourceRegister> src3;
         BitField<0x0a, 0x7, SourceRegister> src2;
         BitField<0x11, 0x7, SourceRegister> src1;
-        
+
         BitField<0x05, 0x7, SourceRegister> src3i;
         BitField<0x0c, 0x5, SourceRegister> src2i;
 
         BitField<0x18, 0x5, DestRegister> dest;
     } mad;
+
+    union {
+        BitField<0x16, 1, uint32_t> winding;
+        BitField<0x17, 1, uint32_t> prim_emit;
+        BitField<0x18, 2, uint32_t> vertex_id;
+    } setemit;
 };
 static_assert(sizeof(Instruction) == 0x4, "Incorrect structure size");
 static_assert(std::is_standard_layout<Instruction>::value, "Structure does not have standard layout");
