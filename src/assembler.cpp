@@ -325,20 +325,6 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    struct StuffToWrite {
-        uint8_t* pointer;
-        uint32_t size;
-    };
-    std::vector<StuffToWrite> writing_queue;
-    uint32_t write_offset = 0;
-
-    auto QueueForWriting = [&writing_queue,&write_offset](uint8_t* pointer, uint32_t size) {
-        writing_queue.push_back({pointer, size});
-        uint32_t old_write_offset = write_offset;
-        write_offset += size;
-        return old_write_offset;
-    };
-
     try {
 
     std::vector<Instruction> instructions;
@@ -1106,6 +1092,23 @@ int main(int argc, char* argv[])
                                throw "No main label specified";
                            }();
 
+    struct WritingQueue {
+        struct QueueElement {
+            uint8_t* pointer;
+            uint32_t size;
+        };
+
+        std::vector<QueueElement> queue;
+        uint32_t write_offset = 0;
+
+        uint32_t Queue(uint8_t* pointer, uint32_t size) {
+            queue.push_back({pointer, size});
+            uint32_t old_write_offset = write_offset;
+            write_offset += size;
+            return old_write_offset;
+        }
+    } writing_queue;
+
     struct {
         DVLBHeader header;
         uint32_t dvle_offset;
@@ -1114,48 +1117,51 @@ int main(int argc, char* argv[])
     DVLPHeader dvlp{ DVLPHeader::MAGIC_WORD };
     DVLEHeader dvle{ DVLEHeader::MAGIC_WORD };
 
-    QueueForWriting((uint8_t*)&dvlb, sizeof(dvlb));
-    uint32_t dvlp_offset = QueueForWriting((uint8_t*)&dvlp, sizeof(dvlp));
-    dvlb.dvle_offset = QueueForWriting((uint8_t*)&dvle, sizeof(dvle));
+    memset(&dvle, 0, sizeof(dvle));
+    dvle.magic_word = DVLEHeader::MAGIC_WORD;
+
+    writing_queue.Queue((uint8_t*)&dvlb, sizeof(dvlb));
+    uint32_t dvlp_offset = writing_queue.Queue((uint8_t*)&dvlp, sizeof(dvlp));
+    dvlb.dvle_offset = writing_queue.Queue((uint8_t*)&dvle, sizeof(dvle));
 
     // TODO: Reduce the amount of binary code written to relevant portions
-    dvlp.binary_offset = write_offset - dvlp_offset;
+    dvlp.binary_offset = writing_queue.write_offset - dvlp_offset;
     dvlp.binary_size_words = instructions.size();
-    QueueForWriting((uint8_t*)instructions.data(), instructions.size() * sizeof(uint32_t));
+    writing_queue.Queue((uint8_t*)instructions.data(), instructions.size() * sizeof(uint32_t));
 
-    dvlp.swizzle_info_offset = write_offset - dvlp_offset;
+    dvlp.swizzle_info_offset = writing_queue.write_offset - dvlp_offset;
     dvlp.swizzle_info_num_entries = swizzle_patterns.size();
     uint32_t dummy = 0;
     for (int i = 0; i < swizzle_patterns.size(); ++i) {
-        QueueForWriting((uint8_t*)&swizzle_patterns[i], sizeof(swizzle_patterns[i]));
-        QueueForWriting((uint8_t*)&dummy, sizeof(dummy));
+        writing_queue.Queue((uint8_t*)&swizzle_patterns[i], sizeof(swizzle_patterns[i]));
+        writing_queue.Queue((uint8_t*)&dummy, sizeof(dummy));
     }
 
-    dvle.output_register_table_offset = write_offset - dvlb.dvle_offset;
+    dvle.output_register_table_offset = writing_queue.write_offset - dvlb.dvle_offset;
     dvle.output_register_table_size = output_table.size();
     for (const auto& output : output_table) {
-        QueueForWriting((uint8_t*)&output, sizeof(output));
+        writing_queue.Queue((uint8_t*)&output, sizeof(output));
     }
 
-    dvle.constant_table_offset = write_offset - dvlb.dvle_offset;
+    dvle.constant_table_offset = writing_queue.write_offset - dvlb.dvle_offset;
     dvle.constant_table_size = constant_table.size();
     for (const auto& constant : constant_table) {
-        QueueForWriting((uint8_t*)&constant, sizeof(constant));
+        writing_queue.Queue((uint8_t*)&constant, sizeof(constant));
     }
 
 
     // TODO: UniformTable spans more than the written data.. fix this design issue :/
     // TODO: Is this TODO still valid?
-    dvle.uniform_table_offset = write_offset - dvlb.dvle_offset;
+    dvle.uniform_table_offset = writing_queue.write_offset - dvlb.dvle_offset;
     dvle.uniform_table_size = uniform_table.size();
     for (const auto& uniform : uniform_table) {
-        QueueForWriting((uint8_t*)&reinterpret_cast<const uint64_t&>(uniform.basic), sizeof(uint64_t));
+        writing_queue.Queue((uint8_t*)&reinterpret_cast<const uint64_t&>(uniform.basic), sizeof(uint64_t));
     }
 
 
     dvle.main_offset_words = main_offset;
 
-    dvle.label_table_offset = write_offset - dvlb.dvle_offset;
+    dvle.label_table_offset = writing_queue.write_offset - dvlb.dvle_offset;
     dvle.label_table_size = label_table.size();
     std::vector<LabelInfo> final_label_table;
     final_label_table.reserve(label_table.size());
@@ -1168,13 +1174,24 @@ int main(int argc, char* argv[])
         info.name_offset = GetSymbolTableEntryByteOffset(label.symbol_table_index);
         final_label_table.push_back(info);
 
-        QueueForWriting((uint8_t*)&final_label_table.back(), sizeof(LabelInfo));
+        writing_queue.Queue((uint8_t*)&final_label_table.back(), sizeof(LabelInfo));
     }
 
-    dvle.symbol_table_offset = write_offset - dvlb.dvle_offset;;
+    dvle.symbol_table_offset = writing_queue.write_offset - dvlb.dvle_offset;;
     dvle.symbol_table_size = GetSymbolTableEntryByteOffset(symbol_table.size() - 1) + (symbol_table.back().length() + 1);
     for (auto& symbol : symbol_table)
-        QueueForWriting((uint8_t*)symbol.c_str(), symbol.length() + 1);
+        writing_queue.Queue((uint8_t*)symbol.c_str(), symbol.length() + 1);
+
+    // Write data to file
+    std::ofstream file(output_filename, std::ios_base::out | std::ios_base::binary);
+    if (!file) {
+        std::cerr << "Could not open output file " << output_filename << std::endl;
+        return 1;
+    }
+
+    for (auto& chunk : writing_queue.queue) {
+        file.write((char*)chunk.pointer, chunk.size);
+    }
 
     } catch (const char* err) {
         std::cerr << input_filename << ":" << code_line << ": error: " << err << std::endl;
@@ -1186,18 +1203,6 @@ int main(int argc, char* argv[])
         size_t start_pos = std::distance(input_code.begin(), preparse_begin);
         std::cerr << "\t" << input_code.substr(start_pos, input_code.find('\n', start_pos) - start_pos) << std::endl;
         return 1;
-    }
-
-    // Write data to file
-    std::ofstream file(output_filename, std::ios_base::out | std::ios_base::binary);
-
-    if (!file) {
-        std::cerr << "Could not open output file " << output_filename << std::endl;
-        return 1;
-    }
-
-    for (auto& chunk : writing_queue) {
-        file.write((char*)chunk.pointer, chunk.size);
     }
 
     return 0;
