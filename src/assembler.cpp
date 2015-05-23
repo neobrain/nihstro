@@ -84,6 +84,9 @@ struct Atomic {
             return RegisterType::Temporary;
         else if (register_index >= (int)RegisterSpace::Input)
             return RegisterType::Input;
+        else
+            assert(0);
+        return {};
     }
 
     int GetIndex() const {
@@ -103,6 +106,9 @@ struct Atomic {
             return register_index - (int)RegisterSpace::Temporary;
         else if (register_index >= (int)RegisterSpace::Input)
             return register_index - (int)RegisterSpace::Input;
+        else
+            assert(0);
+        return {};
     }
 
     // Returns whether this is a float uniform register OR uses relative addressing
@@ -492,7 +498,7 @@ int main(int argc, char* argv[])
                 if (reference.original_opcode != OpCode::Id::GEN_IF)
                     throw "ELSE may not be used if current scope is not an IF-body";
 
-                if (reference.alternative_position != -1)
+                if (reference.alternative_position != (unsigned)-1)
                     throw "ELSE was already called for this IF statement!";
 
                 reference.alternative_position = program_write_offset;
@@ -511,7 +517,7 @@ int main(int argc, char* argv[])
                     throw "ENDIF may not be used if the current scope is not an IF-body";
 
                 // If no ELSE branch was set, set it to the ENDIF position
-                if (reference.alternative_position == -1)
+                if (reference.alternative_position == (unsigned)-1)
                     reference.alternative_position = reference.end_position;
 
                 Instruction& shinst = instructions.at(reference.instruction_index);
@@ -563,7 +569,6 @@ int main(int argc, char* argv[])
                 arguments.push_back(EvaluateExpression(expr));
             }
 
-            int num_args = args.size();
             OpCode opcode = shinst.opcode.Value();
             switch (opcode.GetInfo().type) {
                 case OpCode::Type::Arithmetic:
@@ -810,7 +815,7 @@ int main(int argc, char* argv[])
                         throw "May not pass a conditional code register to this instruction";
 
                     Instruction::FlowControlType::Op op;
-                    bool negate_flags[2] = {};
+                    bool negate_flags[2] = { false, false };
 
                     if (condition.GetConditionOp() == Instruction::FlowControlType::JustX) {
                         if (condition_variable.mask.num_components == 1) {
@@ -1143,7 +1148,7 @@ int main(int argc, char* argv[])
     dvlp.swizzle_info_offset = writing_queue.write_offset - dvlp_offset;
     dvlp.swizzle_info_num_entries = swizzle_patterns.size();
     uint32_t dummy = 0;
-    for (int i = 0; i < swizzle_patterns.size(); ++i) {
+    for (size_t i = 0; i < swizzle_patterns.size(); ++i) {
         writing_queue.Queue((uint8_t*)&swizzle_patterns[i], sizeof(swizzle_patterns[i]));
         writing_queue.Queue((uint8_t*)&dummy, sizeof(dummy));
     }
@@ -1208,6 +1213,7 @@ int main(int argc, char* argv[])
         std::cerr << input_filename << ":" << code_line << ": error: " << err << std::endl;
         size_t start_pos = std::distance(input_code.begin(), preparse_begin);
         std::cerr << "\t" << input_code.substr(start_pos, input_code.find('\n', start_pos) - start_pos) << std::endl;
+        return 1;
     }
     catch (const std::string& err) {
         std::cerr << input_filename << ":" << code_line << ": error: " << err << std::endl;
