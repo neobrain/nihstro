@@ -296,6 +296,32 @@ static size_t FindOrAddSwizzlePattern(std::vector<SwizzlePattern>& swizzle_patte
     return it - swizzle_patterns.begin();
 };
 
+static size_t FindOrAddSwizzlePattern(std::vector<SwizzlePattern>& swizzle_patterns,
+                               const SourceSwizzlerMask& mask_src1,
+                               bool negate_src1) {
+    SwizzlePattern swizzle_pattern;
+    swizzle_pattern.hex = 0;
+
+    for (int i = 0, active_component = 0; i < 4; ++i) {
+        if (mask_src1.components[i] != SourceSwizzlerMask::Unspecified)
+            swizzle_pattern.SetSelectorSrc1(i, static_cast<SwizzlePattern::Selector>(mask_src1.components[i]));
+    }
+
+    swizzle_pattern.negate_src1 = negate_src1;
+
+    auto it = std::find_if(swizzle_patterns.begin(), swizzle_patterns.end(),
+                            [&swizzle_pattern](const SwizzlePattern& val) { return val.hex == swizzle_pattern.hex; });
+    if (it == swizzle_patterns.end()) {
+        swizzle_patterns.push_back(swizzle_pattern);
+        it = swizzle_patterns.end() - 1;
+
+        if (swizzle_patterns.size() > 127)
+            throw "Limit of 127 swizzle patterns has been exhausted";
+    }
+
+    return it - swizzle_patterns.begin();
+};
+
 int main(int argc, char* argv[])
 {
     if (argc < 2) {
@@ -573,10 +599,35 @@ int main(int argc, char* argv[])
             switch (opcode.GetInfo().type) {
                 case OpCode::Type::Arithmetic:
                 {
-                    if (opcode == OpCode::Id::MAD || opcode == OpCode::Id::MOVA)
-                        throw "MAD and MOVA are not supported, yet";
+                    if (opcode == OpCode::Id::MAD)
+                        throw "MAD not supported, yet";
 
                     const int num_inputs = opcode.GetInfo().NumArguments() - 1;
+
+                    if (opcode == OpCode::Id::MOVA) {
+                        // MOVA is special in that it doesn't take a "dest" argument. Hence we treat it separately from all other opcodes.
+
+                        if (num_inputs > 1)
+                            throw "Passed multiple arguments to unary operation MOVA";
+
+                        AssertRegisterReadable(arguments[0].GetType());
+                        InputSwizzlerMask input_mask_src1 = arguments[0].mask;
+
+                        shinst.common.src1  = SourceRegister::FromTypeAndIndex(arguments[0].GetType(), arguments[0].GetIndex());
+
+                        shinst.common.address_register_index = arguments[0].relative_address_source;
+
+                        // Generic syntax checking.. we likely want to have more special cases in the future!
+                        if (input_mask_src1.num_components != 2)
+                            throw "MOVA operand must be a two-component vector";
+
+                        // Build swizzle patterns
+                        SourceSwizzlerMask mask_src1 = SourceSwizzlerMask::Expand(input_mask_src1);
+                        shinst.common.operand_desc_id = FindOrAddSwizzlePattern(swizzle_patterns, mask_src1, arguments[0].negate);
+
+                        instructions.push_back(shinst);
+                        break;
+                    }
 
                     AssertRegisterWriteable(arguments[0].GetType(), arguments[0].GetIndex());
                     AssertRegisterReadable(arguments[1].GetType());
