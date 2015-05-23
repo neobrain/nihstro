@@ -214,7 +214,7 @@ struct transform_attribute<InputSwizzlerMask, std::vector<InputSwizzlerMask::Com
 
     static void post(Exposed& val, const type& attr) {
         val.num_components = attr.size();
-        for (int i = 0; i < attr.size(); ++i)
+        for (size_t i = 0; i < attr.size(); ++i)
             val.components[i] = attr[i];
     }
 
@@ -366,12 +366,12 @@ struct TrivialOpParser : qi::grammar<Iterator, OpCode(), AssemblySkipper<Iterato
     TrivialOpParser(const ParserContext& context)
                 : TrivialOpParser::base_type(trivial_instruction),
                   common(context),
-                  diagnostics(common.diagnostics),
-                  end_of_statement(common.end_of_statement),
                   opcodes_trivial(common.opcodes_trivial),
                   opcodes_compare(common.opcodes_compare),
                   opcodes_float(common.opcodes_float),
-                  opcodes_flowcontrol(common.opcodes_flowcontrol) {
+                  opcodes_flowcontrol(common.opcodes_flowcontrol),
+                  end_of_statement(common.end_of_statement),
+                  diagnostics(common.diagnostics) {
 
         // Setup rules
         if (require_end_of_line) {
@@ -415,10 +415,10 @@ struct FloatOpParser : qi::grammar<Iterator, FloatOpInstruction(), AssemblySkipp
     FloatOpParser(const ParserContext& context)
                 : FloatOpParser::base_type(float_instruction),
                   common(context),
-                  end_of_statement(common.end_of_statement),
+                  opcodes_float(common.opcodes_float),
                   expression(common.expression),
-                  diagnostics(common.diagnostics),
-                  opcodes_float(common.opcodes_float) {
+                  end_of_statement(common.end_of_statement),
+                  diagnostics(common.diagnostics) {
 
         // Setup rules
 
@@ -499,10 +499,10 @@ struct CompareParser : qi::grammar<Iterator, CompareInstruction(), AssemblySkipp
     CompareParser(const ParserContext& context)
                 : CompareParser::base_type(instruction),
                   common(context),
-                  end_of_statement(common.end_of_statement),
+                  opcodes_compare(common.opcodes_compare),
                   expression(common.expression),
-                  diagnostics(common.diagnostics),
-                  opcodes_compare(common.opcodes_compare) {
+                  end_of_statement(common.end_of_statement),
+                  diagnostics(common.diagnostics) {
 
         // TODO: Will this properly match >= ?
         compare_ops.add
@@ -569,12 +569,12 @@ struct FlowControlParser : qi::grammar<Iterator, FlowControlInstruction(), Assem
     FlowControlParser(const ParserContext& context)
                 : FlowControlParser::base_type(flow_control_instruction),
                   common(context),
-                  end_of_statement(common.end_of_statement),
+                  opcodes_flowcontrol(common.opcodes_flowcontrol),
                   expression(common.expression),
                   identifier(common.identifier),
                   swizzle_mask(common.swizzle_mask),
-                  diagnostics(common.diagnostics),
-                  opcodes_flowcontrol(common.opcodes_flowcontrol) {
+                  end_of_statement(common.end_of_statement),
+                  diagnostics(common.diagnostics) {
 
         condition_ops.add
                    ( "&&",    ConditionOp::And     )
@@ -582,7 +582,6 @@ struct FlowControlParser : qi::grammar<Iterator, FlowControlInstruction(), Assem
 
         // Setup rules
 
-        auto comma_rule = qi::lit(',');
         auto blank_rule = qi::omit[ascii::blank];
         auto label_rule = identifier.alias();
 
@@ -609,8 +608,8 @@ struct FlowControlParser : qi::grammar<Iterator, FlowControlInstruction(), Assem
         // call target_label until return_label if condition
         instr[1] = opcode[1]
                    >> label_rule
-                   >> -(qi::no_skip[blank_rule >> qi::lit("until") > blank_rule] >> label_rule)
-                   >> -(qi::no_skip[blank_rule >> qi::lit("if") > blank_rule] >> condition);
+                   >> -(qi::no_skip[(blank_rule >> qi::lit("until")) > blank_rule] >> label_rule)
+                   >> -(qi::no_skip[(blank_rule >> qi::lit("if")) > blank_rule] >> condition);
 
         flow_control_instruction %= (instr[0] | instr[1]) > end_of_statement;
 
@@ -664,9 +663,9 @@ struct SetEmitParser : qi::grammar<Iterator, SetEmitInstruction(), AssemblySkipp
     SetEmitParser(const ParserContext& context)
                 : SetEmitParser::base_type(setemit_instruction),
                   common(context),
+                  opcodes_setemit(common.opcodes_setemit),
                   end_of_statement(common.end_of_statement),
-                  diagnostics(common.diagnostics),
-                  opcodes_setemit(common.opcodes_setemit) {
+                  diagnostics(common.diagnostics) {
 
         // Setup rules
 
@@ -742,8 +741,8 @@ struct DeclarationParser : qi::grammar<Iterator, StatementDeclaration(), Assembl
     DeclarationParser(const ParserContext& context)
                 : DeclarationParser::base_type(declaration),
                   common(context),
-                  end_of_statement(common.end_of_statement),
                   identifier(common.identifier), swizzle_mask(common.swizzle_mask),
+                  end_of_statement(common.end_of_statement),
                   diagnostics(common.diagnostics) {
 
         // Setup symbol table
@@ -757,8 +756,6 @@ struct DeclarationParser : qi::grammar<Iterator, StatementDeclaration(), Assembl
         output_semantics_rule = qi::lexeme[output_semantics];
 
         // Setup rules
-
-        auto comma_rule = qi::lit(',');
 
         alias_identifier = qi::omit[qi::lexeme["alias" >> ascii::blank]] > identifier;
 
