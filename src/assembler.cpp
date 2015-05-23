@@ -687,7 +687,7 @@ int main(int argc, char* argv[])
                         mask_src1 = SourceSwizzlerMask::AccordingToDestMask(input_mask_src1, dest_mask);
                         mask_src2 = SourceSwizzlerMask::AccordingToDestMask(input_mask_src2, dest_mask);
                     }
-                    shinst.common.operand_desc_id = FindOrAddSwizzlePattern(swizzle_patterns, dest_mask, mask_src1, mask_src2, arguments[0].negate, arguments[1].negate);
+                    shinst.common.operand_desc_id = FindOrAddSwizzlePattern(swizzle_patterns, dest_mask, mask_src1, mask_src2, arguments[1].negate, arguments[2].negate);
 
                     instructions.push_back(shinst);
                     break;
