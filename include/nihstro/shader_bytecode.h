@@ -705,6 +705,19 @@ union SwizzlePattern {
             throw std::out_of_range("comp needs to be smaller than 4");
     }
 
+    void SetSelectorSrc3(int comp, Selector value) {
+        if (comp == 0)
+            src3_selector_0 = value;
+        else if (comp == 1)
+            src3_selector_1 = value;
+        else if (comp == 2)
+            src3_selector_2 = value;
+        else if (comp == 3)
+            src3_selector_3 = value;
+        else
+            throw std::out_of_range("comp needs to be smaller than 4");
+    }
+
     std::string SelectorToString(bool src2) const {
         std::map<Selector, std::string> map = {
             { Selector::x, "x" },

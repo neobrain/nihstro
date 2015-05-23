@@ -229,7 +229,46 @@ static Atomic EvaluateExpression(const Expression& expr) {
 };
 
 // TODO: Provide optimized versions for functions without src2
-// TODO: Support src3 inputs
+static size_t FindOrAddSwizzlePattern(std::vector<SwizzlePattern>& swizzle_patterns,
+                               const DestSwizzlerMask& dest_mask,
+                               const SourceSwizzlerMask& mask_src1,
+                               const SourceSwizzlerMask& mask_src2,
+                               const SourceSwizzlerMask& mask_src3,
+                               bool negate_src1, bool negate_src2, bool negate_src3) {
+    SwizzlePattern swizzle_pattern;
+    swizzle_pattern.hex = 0;
+
+    for (int i = 0, active_component = 0; i < 4; ++i) {
+        if (dest_mask.component_set[i])
+            swizzle_pattern.SetDestComponentEnabled(i, true);
+
+        if (mask_src1.components[i] != SourceSwizzlerMask::Unspecified)
+            swizzle_pattern.SetSelectorSrc1(i, static_cast<SwizzlePattern::Selector>(mask_src1.components[i]));
+
+        if (mask_src2.components[i] != SourceSwizzlerMask::Unspecified)
+            swizzle_pattern.SetSelectorSrc2(i, static_cast<SwizzlePattern::Selector>(mask_src2.components[i]));
+
+        if (mask_src3.components[i] != SourceSwizzlerMask::Unspecified)
+            swizzle_pattern.SetSelectorSrc3(i, static_cast<SwizzlePattern::Selector>(mask_src3.components[i]));
+    }
+
+    swizzle_pattern.negate_src1 = negate_src1;
+    swizzle_pattern.negate_src2 = negate_src2;
+    swizzle_pattern.negate_src3 = negate_src3;
+
+    auto it = std::find_if(swizzle_patterns.begin(), swizzle_patterns.end(),
+                            [&swizzle_pattern](const SwizzlePattern& val) { return val.hex == swizzle_pattern.hex; });
+    if (it == swizzle_patterns.end()) {
+        swizzle_patterns.push_back(swizzle_pattern);
+        it = swizzle_patterns.end() - 1;
+
+        if (swizzle_patterns.size() > 127)
+            throw "Limit of 127 swizzle patterns has been exhausted";
+    }
+
+    return it - swizzle_patterns.begin();
+};
+
 static size_t FindOrAddSwizzlePattern(std::vector<SwizzlePattern>& swizzle_patterns,
                                const DestSwizzlerMask& dest_mask,
                                const SourceSwizzlerMask& mask_src1,
@@ -599,9 +638,6 @@ int main(int argc, char* argv[])
             switch (opcode.GetInfo().type) {
                 case OpCode::Type::Arithmetic:
                 {
-                    if (opcode == OpCode::Id::MAD)
-                        throw "MAD not supported, yet";
-
                     const int num_inputs = opcode.GetInfo().NumArguments() - 1;
 
                     if (opcode == OpCode::Id::MOVA) {
@@ -657,11 +693,6 @@ int main(int argc, char* argv[])
                             case OpCode::Id::MAX:
                             case OpCode::Id::MIN:
                                 // Commutative operation, so just exchange arguments
-                                boost::swap(arguments[1], arguments[2]);
-                                break;
-
-                            case OpCode::Id::MAD:
-                                // Commutative in first two arguments, so just exchange arguments
                                 boost::swap(arguments[1], arguments[2]);
                                 break;
 
@@ -750,6 +781,79 @@ int main(int argc, char* argv[])
                     instructions.push_back(shinst);
                     break;
                 }
+
+                case OpCode::Type::MultiplyAdd:
+                {
+                    AssertRegisterWriteable(arguments[0].GetType(), arguments[0].GetIndex());
+                    AssertRegisterReadable(arguments[1].GetType());
+                    AssertRegisterReadable(arguments[2].GetType());
+                    AssertRegisterReadable(arguments[3].GetType());
+
+                    // If no swizzler have been specified, use .xyzw - compile errors triggered by this are intended! (accessing subvectors should be done explicitly)
+                    InputSwizzlerMask input_dest_mask = arguments[0].mask;
+                    InputSwizzlerMask input_mask_src1;
+                    InputSwizzlerMask input_mask_src2;
+                    InputSwizzlerMask input_mask_src3;
+
+                    bool inverse_instruction_format = false;
+
+                    if (boost::count_if(arguments | boost::adaptors::sliced(1,3), [](const Atomic& a) { return a.IsExtended(); }) >= 3) {
+                        throw "Not more than two input registers may be floating point uniforms and/or use dynamic indexing";
+                    }
+
+                    // If third argument is an extended input, use MADI instead
+                    if (arguments[3].IsExtended()) {
+                        shinst.opcode = OpCode::Id::MADI;
+                        inverse_instruction_format = true;
+
+                        // If second argument is a floating point register, swap it to first place.
+                        // This can be done because MAD is commutative in its first two arguments.
+                        // NOTE: This is only necessary for MADI because MAD provides 7 bits for SRC1 *and* SRC2.
+                        if (arguments[2].IsExtended())
+                            boost::swap(arguments[1], arguments[2]);
+                    }
+
+                    shinst.mad.src1 = SourceRegister::FromTypeAndIndex(arguments[1].GetType(), arguments[1].GetIndex());
+                    if (inverse_instruction_format) {
+                        shinst.mad.src2i = SourceRegister::FromTypeAndIndex(arguments[2].GetType(), arguments[2].GetIndex());
+                        shinst.mad.src3i = SourceRegister::FromTypeAndIndex(arguments[3].GetType(), arguments[3].GetIndex());
+                    } else {
+                        shinst.mad.src2 = SourceRegister::FromTypeAndIndex(arguments[2].GetType(), arguments[2].GetIndex());
+                        shinst.mad.src3 = SourceRegister::FromTypeAndIndex(arguments[3].GetType(), arguments[3].GetIndex());
+                    }
+                    input_mask_src1 = arguments[1].mask;
+                    input_mask_src2 = arguments[2].mask;
+                    input_mask_src3 = arguments[3].mask;
+
+                    shinst.mad.dest = DestRegister::FromTypeAndIndex(arguments[0].GetType(), arguments[0].GetIndex());
+
+                    // Generic syntax checking.. we likely want to have more special cases in the future!
+                    if (input_dest_mask.num_components != input_mask_src1.num_components ||
+                        input_mask_src1.num_components != input_mask_src2.num_components ||
+                        input_mask_src2.num_components != input_mask_src3.num_components) {
+                        throw "Input registers need to use the same number of components as the output register!"
+                                + std::string("(dest: ") + std::to_string(input_dest_mask.num_components) + " components, "
+                                + std::string("src1: ") + std::to_string(input_mask_src1.num_components) + " components"
+                                + std::string(", src2: ") + std::to_string(input_mask_src2.num_components) + " components"
+                                + std::string(", src3: ") + std::to_string(input_mask_src3.num_components) + " components)";
+                    }
+
+                    // Build swizzle patterns
+                    // TODO: In the case of "few arguments", we can re-use patterns created with
+                    //       larger argument lists to optimize pattern count.
+                    DestSwizzlerMask dest_mask{input_dest_mask};
+                    SourceSwizzlerMask mask_src1;
+                    SourceSwizzlerMask mask_src2;
+                    SourceSwizzlerMask mask_src3;
+                    mask_src1 = SourceSwizzlerMask::AccordingToDestMask(input_mask_src1, dest_mask);
+                    mask_src2 = SourceSwizzlerMask::AccordingToDestMask(input_mask_src2, dest_mask);
+                    mask_src3 = SourceSwizzlerMask::AccordingToDestMask(input_mask_src3, dest_mask);
+                    shinst.mad.operand_desc_id = FindOrAddSwizzlePattern(swizzle_patterns, dest_mask, mask_src1, mask_src2, mask_src3, arguments[1].negate, arguments[2].negate, arguments[3].negate);
+
+                    instructions.push_back(shinst);
+                    break;
+                }
+
                 default:
                     throw "Unknown instruction encountered";
                     break;
