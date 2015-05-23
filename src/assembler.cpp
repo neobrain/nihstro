@@ -626,6 +626,7 @@ int main(int argc, char* argv[])
                             default:
                                 throw "This opcode is not supported with a float uniform in second place. Change your code to put the float uniform in the first place, instead.";
                             }
+                            shinst.opcode = opcode;
                         }
 
                         if (inverse_instruction_format) {
