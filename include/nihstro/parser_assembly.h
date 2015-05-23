@@ -282,7 +282,13 @@ struct FlowControlInstruction {
     const Condition& GetCondition() const {
         return *condition;
     }
+};
 
+struct SetEmitInstruction {
+    OpCode opcode;
+    unsigned vertex_id;
+    boost::optional<bool> primitive_flag;
+    boost::optional<bool> invert_flag;
 };
 
 struct StatementDeclaration {
@@ -334,6 +340,9 @@ struct Parser {
 
     // Parse flow control instruction including line ending
     bool ParseFlowControl(Iterator& begin, Iterator end, FlowControlInstruction* content);
+
+    // Parse SetEmit instruction including line ending
+    bool ParseSetEmit(Iterator& begin, Iterator end, SetEmitInstruction* content);
 
 private:
     struct ParserImpl;
