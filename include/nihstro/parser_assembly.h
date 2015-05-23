@@ -25,16 +25,13 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include <boost/optional.hpp>
 #include <array>
 #include <vector>
 #include <ostream>
 #include <cstdint>
 
-#include <boost/fusion/container/vector.hpp>
-#include <boost/fusion/include/at_c.hpp>
-
-#include <boost/spirit/include/qi_symbols.hpp>
+#include <boost/optional.hpp>
+#include <boost/variant.hpp>
 
 #include "shader_binary.h"
 #include "shader_bytecode.h"
@@ -86,15 +83,17 @@ using Identifier = std::string;
 // A sign, i.e. +1 or -1
 using Sign = int;
 
-struct IntegerWithSign : boost::fusion::vector<int, unsigned int> {
+struct IntegerWithSign {
+    int sign;
+    unsigned value;
+
     int GetValue() const {
-        return boost::fusion::at_c<0>(*this) * boost::fusion::at_c<1>(*this);
+        return sign * value;
     }
 };
 
 // Raw index + address register index
 struct IndexExpression : std::vector<boost::variant<IntegerWithSign, Identifier>> {
-
     int GetCount() const {
         return this->size();
     }
@@ -116,7 +115,14 @@ struct IndexExpression : std::vector<boost::variant<IntegerWithSign, Identifier>
     }
 };
 
-struct Expression : boost::fusion::vector<boost::fusion::vector<boost::optional<Sign>, Identifier>, boost::optional<IndexExpression>, std::vector<InputSwizzlerMask>> {
+struct Expression {
+    struct SignedIdentifier {
+        boost::optional<Sign> sign;
+        Identifier identifier;
+    } signed_identifier;
+
+    boost::optional<IndexExpression> index;
+    std::vector<InputSwizzlerMask> swizzle_masks;
 
     int GetSign() const {
         if (!RawSign())
@@ -143,145 +149,153 @@ struct Expression : boost::fusion::vector<boost::fusion::vector<boost::optional<
 
 private:
     const boost::optional<Sign>& RawSign() const {
-        return boost::fusion::at_c<0>(boost::fusion::at_c<0>(*this));
+        return signed_identifier.sign;
     }
 
     const Identifier& RawIdentifier() const {
-        return boost::fusion::at_c<1>(boost::fusion::at_c<0>(*this));
+        return signed_identifier.identifier;
     }
 
     const boost::optional<IndexExpression>& RawIndex() const {
-        return boost::fusion::at_c<1>(*this);
+        return index;
     }
 
     const std::vector<InputSwizzlerMask>& RawSwizzleMasks() const {
-        return boost::fusion::at_c<2>(*this);
+        return swizzle_masks;
     }
 };
 
-struct ConditionInput : boost::fusion::vector<bool, Identifier, boost::optional<InputSwizzlerMask>> {
+struct ConditionInput {
+    bool invert;
+    Identifier identifier;
+    boost::optional<InputSwizzlerMask> swizzler_mask;
+
     bool GetInvertFlag() const {
-        return boost::fusion::at_c<0>(*this);
+        return invert;
     }
 
     const Identifier& GetIdentifier() const {
-        return boost::fusion::at_c<1>(*this);
+        return identifier;
     }
 
     bool HasSwizzleMask() const {
-        return static_cast<bool>(boost::fusion::at_c<2>(*this));
+        return static_cast<bool>(swizzler_mask);
     }
 
     const InputSwizzlerMask& GetSwizzleMask() const {
-        return *boost::fusion::at_c<2>(*this);
+        return *swizzler_mask;
     }
-
 };
 
-struct Condition : boost::fusion::vector<ConditionInput,
-                                         Instruction::FlowControlType::Op,
-                                         ConditionInput> {
-    Condition() = default;
+struct Condition {
+    ConditionInput input1;
+    Instruction::FlowControlType::Op op;
+    ConditionInput input2;
 
     const ConditionInput& GetFirstInput() const {
-        return boost::fusion::at_c<0>(*this);
+        return input1;
     }
 
     Instruction::FlowControlType::Op GetConditionOp() const {
-        return boost::fusion::at_c<1>(*this);
+        return op;
     }
 
     const ConditionInput& GetSecondInput() const {
-        return boost::fusion::at_c<2>(*this);
+        return input2;
     }
 };
 
 using StatementLabel = std::string;
 
-// TODO: Figure out why this cannot be a std::tuple...
-struct StatementInstruction : boost::fusion::vector<OpCode, std::vector<Expression>> {
+struct StatementInstruction {
+    OpCode opcode;
+    std::vector<Expression> expressions;
+
     StatementInstruction() = default;
 
     // TODO: Obsolete constructor?
-    StatementInstruction(const OpCode& opcode) : boost::fusion::vector<OpCode, std::vector<Expression>>(opcode, std::vector<Expression>()) {
+    StatementInstruction(const OpCode& opcode) : opcode(opcode) {
     }
 
     const OpCode& GetOpCode() const {
-        return boost::fusion::at_c<0>(*this);
+        return opcode;
     }
 
     const std::vector<Expression>& GetArguments() const {
-        return boost::fusion::at_c<1>(*this);
+        return expressions;
     }
 };
 using FloatOpInstruction = StatementInstruction;
 
-struct CompareInstruction : boost::fusion::vector<OpCode, std::vector<Expression>, std::vector<Instruction::Common::CompareOpType::Op>> {
-    CompareInstruction() = default;
+struct CompareInstruction {
+    OpCode opcode;
+    std::vector<Expression> arguments;
+    std::vector<Instruction::Common::CompareOpType::Op> ops;
 
     const OpCode& GetOpCode() const {
-        return boost::fusion::at_c<0>(*this);
+        return opcode;
     }
 
     const Expression& GetSrc1() const {
-        return boost::fusion::at_c<1>(*this)[0];
+        return arguments[0];
     }
 
     const Expression& GetSrc2() const {
-        return boost::fusion::at_c<1>(*this)[1];
+        return arguments[1];
     }
 
     Instruction::Common::CompareOpType::Op GetOp1() const {
-        return boost::fusion::at_c<2>(*this)[0];
+        return ops[0];
     }
 
     Instruction::Common::CompareOpType::Op GetOp2() const {
-        return boost::fusion::at_c<2>(*this)[1];
+        return ops[1];
     }
 };
 
-struct FlowControlInstruction : boost::fusion::vector<OpCode,
-                                                      std::string /*target_label*/,
-                                                      boost::optional<std::string> /*return_label*/,
-                                                      boost::optional<Condition>> {
-    using ParentType = boost::fusion::vector<OpCode, std::string, boost::optional<std::string>, boost::optional<Condition>>;
+struct FlowControlInstruction {
+    OpCode opcode;
+    std::string target_label;
+    boost::optional<std::string> return_label;
+    boost::optional<Condition> condition;
 
-    FlowControlInstruction() = default;
-
-    FlowControlInstruction(const ParentType& obj) : boost::fusion::vector<OpCode, std::string, boost::optional<std::string>, boost::optional<Condition>>(obj) {};
     const OpCode& GetOpCode() const {
-        return boost::fusion::at_c<0>(*this);
+        return opcode;
     }
 
     const std::string& GetTargetLabel() const {
-        return boost::fusion::at_c<1>(*this);
+        return target_label;
     }
 
     bool HasReturnLabel() const {
-        return static_cast<bool>(boost::fusion::at_c<2>(*this));
+        return static_cast<bool>(return_label);
     }
 
     const std::string& GetReturnLabel() const {
-        return *boost::fusion::at_c<2>(*this);
+        return *return_label;
     }
 
     bool HasCondition() const {
-        return static_cast<bool>(boost::fusion::at_c<3>(*this));
+        return static_cast<bool>(condition);
     }
 
     const Condition& GetCondition() const {
-        return *boost::fusion::at_c<3>(*this);
+        return *condition;
     }
 
 };
 
-using StatementDeclaration = boost::fusion::vector<std::string /* alias name */,
-                                                   Identifier /* aliased identifier (start register) */,
-                                                   boost::optional<Identifier> /* aliased identifier (end register) */,
-                                                   boost::optional<InputSwizzlerMask> /* swizzle mask */,
-                                                   boost::fusion::vector<std::vector<float> /* constant value */,
-                                                                         boost::optional<OutputRegisterInfo::Type> /* output semantic */>>;
+struct StatementDeclaration {
+    std::string alias_name;
+    Identifier identifier_start; /* aliased identifier (start register) */
+    boost::optional<Identifier> identifier_end; /* aliased identifier (end register) */
+    boost::optional<InputSwizzlerMask> swizzle_mask; // referring to the aliased identifier
 
+    struct Extra {
+        std::vector<float> constant_value;
+        boost::optional<OutputRegisterInfo::Type> output_semantic;
+    } extra;
+};
 
 struct ParserContext {
     // There currently is no context

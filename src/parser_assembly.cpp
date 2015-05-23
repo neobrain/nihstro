@@ -36,22 +36,88 @@
 #include "nihstro/shader_binary.h"
 #include "nihstro/shader_bytecode.h"
 
-// A boost::spirit::swap implementation is required to use qi::hold
-// TODO: Figure out a more elegant way to do this
-namespace boost {
-namespace spirit {
-static void swap(nihstro::Condition& cond1, nihstro::Condition& cond2) {
-    nihstro::Condition cond3(cond1);
-    cond1 = cond2;
-    cond2 = cond3;
-}
-}
-}
-
-using namespace boost::spirit;
+namespace spirit = boost::spirit;
+namespace qi = boost::spirit::qi;
+namespace ascii = boost::spirit::qi::ascii;
 namespace phoenix = boost::phoenix;
 
+using spirit::_1;
+using spirit::_2;
+using spirit::_3;
+using spirit::_4;
+
 using namespace nihstro;
+
+// Adapt parser data structures for use with boost::spirit
+
+BOOST_FUSION_ADAPT_STRUCT(
+    IntegerWithSign,
+    (int, sign)
+    (unsigned, value)
+)
+
+BOOST_FUSION_ADAPT_STRUCT(
+    Expression::SignedIdentifier,
+    (boost::optional<Sign>, sign)
+    (Identifier, identifier)
+)
+
+BOOST_FUSION_ADAPT_STRUCT(
+    Expression,
+    (Expression::SignedIdentifier, signed_identifier)
+    (boost::optional<IndexExpression>, index)
+    (std::vector<InputSwizzlerMask>, swizzle_masks)
+)
+
+BOOST_FUSION_ADAPT_STRUCT(
+    ConditionInput,
+    (bool, invert)
+    (Identifier, identifier)
+    (boost::optional<InputSwizzlerMask>, swizzler_mask)
+)
+
+BOOST_FUSION_ADAPT_STRUCT(
+    Condition,
+    (ConditionInput, input1)
+    (Instruction::FlowControlType::Op, op)
+    (ConditionInput, input2)
+)
+
+BOOST_FUSION_ADAPT_STRUCT(
+    StatementInstruction,
+    (OpCode, opcode)
+    (std::vector<Expression>, expressions)
+)
+
+BOOST_FUSION_ADAPT_STRUCT(
+    CompareInstruction,
+    (OpCode, opcode)
+    (std::vector<Expression>, arguments)
+    (std::vector<Instruction::Common::CompareOpType::Op>, ops)
+)
+
+BOOST_FUSION_ADAPT_STRUCT(
+    FlowControlInstruction,
+    (OpCode, opcode)
+    (std::string, target_label)
+    (boost::optional<std::string>, return_label)
+    (boost::optional<Condition>, condition)
+)
+
+BOOST_FUSION_ADAPT_STRUCT(
+    StatementDeclaration::Extra,
+    (std::vector<float>, constant_value)
+    (boost::optional<OutputRegisterInfo::Type>, output_semantic)
+)
+
+BOOST_FUSION_ADAPT_STRUCT(
+    StatementDeclaration,
+    (std::string, alias_name)
+    (Identifier, identifier_start)
+    (boost::optional<Identifier>, identifier_end)
+    (boost::optional<InputSwizzlerMask>, swizzle_mask)
+    (StatementDeclaration::Extra, extra)
+)
 
 class Diagnostics
 {
@@ -82,7 +148,7 @@ struct ErrorHandler
     template <class D, class B, class E, class W, class I>
     void operator ()(const D& diagnostics, B begin, E end, W where, const I& info) const
     {
-        const utf8_string& tag(info.tag);
+        const spirit::utf8_string& tag(info.tag);
         const char* const what(tag.c_str());
         const char* diagnostic(diagnostics[what]);
         std::string scratch;
@@ -677,14 +743,14 @@ struct DeclarationParser : qi::grammar<Iterator, StatementDeclaration(), Assembl
     qi::rule<Iterator, OutputRegisterInfo::Type(),Skipper> output_semantics_rule;
 
     // Building blocks
-    qi::rule<Iterator, std::string(),             Skipper>& identifier;
-    qi::rule<Iterator, InputSwizzlerMask(),       Skipper>& swizzle_mask;
-    qi::rule<Iterator, std::vector<float>(),      Skipper> constant;
-    qi::rule<Iterator, std::string(),             Skipper> alias_identifier;
-    qi::rule<Iterator, boost::fusion::vector<std::vector<float>, boost::optional<OutputRegisterInfo::Type>>(), Skipper> const_or_semantic;
-    qi::rule<Iterator,                            Skipper>& end_of_statement;
+    qi::rule<Iterator, std::string(),                 Skipper>& identifier;
+    qi::rule<Iterator, InputSwizzlerMask(),           Skipper>& swizzle_mask;
+    qi::rule<Iterator, std::vector<float>(),          Skipper> constant;
+    qi::rule<Iterator, std::string(),                 Skipper> alias_identifier;
+    qi::rule<Iterator, StatementDeclaration::Extra(), Skipper> const_or_semantic;
+    qi::rule<Iterator,                                Skipper>& end_of_statement;
 
-    qi::rule<Iterator, StatementDeclaration(),    Skipper> declaration;
+    qi::rule<Iterator, StatementDeclaration(),        Skipper> declaration;
     Diagnostics diagnostics;
 };
 

@@ -968,18 +968,18 @@ int main(int argc, char* argv[])
             auto& var = statement_declaration;
 
             // TODO: Support not specifying any uniform name
-            std::string idname = boost::fusion::at_c<0>(var);
+            std::string idname = var.alias_name;
 
-            Identifier id = boost::fusion::at_c<1>(var);
-            Identifier end_id = (boost::fusion::at_c<2>(var)) ? *boost::fusion::at_c<2>(var) : id;
+            Identifier id = var.identifier_start;
+            Identifier end_id = (var.identifier_end) ? *var.identifier_end : id;
             bool aliases_range = (id != end_id);
             Atomic ret = LookupIdentifier(id);
 
-            bool has_swizzle_mask = static_cast<bool>(boost::fusion::at_c<3>(var));
-            ret.mask = has_swizzle_mask ? *boost::fusion::at_c<3>(var) : InputSwizzlerMask::FullMask();
+            bool has_swizzle_mask = static_cast<bool>(var.swizzle_mask);
+            ret.mask = has_swizzle_mask ? *var.swizzle_mask : InputSwizzlerMask::FullMask();
 
-            std::vector<float>& values = boost::fusion::at_c<0>(boost::fusion::at_c<4>(var));
-            auto output_semantic = boost::fusion::at_c<1>(boost::fusion::at_c<4>(var));
+            std::vector<float>& values = var.extra.constant_value;
+            auto output_semantic = var.extra.output_semantic;
 
             if (std::find(symbol_table.begin(), symbol_table.end(), idname) != symbol_table.end())
                 throw "Symbol name \"" + idname + "\" already defined!";
