@@ -1149,8 +1149,9 @@ int main(int argc, char* argv[])
             shinst.hex = 0;
             shinst.opcode = statement_setemit.opcode;
             shinst.setemit.vertex_id = statement_setemit.vertex_id;
-            shinst.setemit.prim_emit = static_cast<bool>(statement_setemit.primitive_flag);
-            shinst.setemit.winding   = static_cast<bool>(statement_setemit.invert_flag);
+            shinst.setemit.prim_emit = statement_setemit.PrimitiveFlag();
+            shinst.setemit.winding   = statement_setemit.InvertFlag();
+
             instructions.push_back(shinst);
             ++program_write_offset;
         } else if (parser.ParseDeclaration(begin, input_code.end(), &statement_declaration)) {
@@ -1270,7 +1271,7 @@ int main(int argc, char* argv[])
             identifier_table.insert({idname, ret});
         } else if (begin != input_code.end()) {
             // TODO: Actually, this should be a hint about invalid intruction formats, but on Windows even EOF triggers this for some reason.
-            std::cerr << "Warning: Unknown instruction format, treating like EOF..." << std::endl;
+            std::cerr << "Warning: Unknown instruction format, treating like EOF: \"" << std::string(preparse_begin, std::find(preparse_begin, input_code.end(), '\n')) << "\"" << std::endl;
             break;
         }
     }
