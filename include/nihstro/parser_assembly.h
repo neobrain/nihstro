@@ -287,8 +287,19 @@ struct FlowControlInstruction {
 struct SetEmitInstruction {
     OpCode opcode;
     unsigned vertex_id;
-    boost::optional<bool> primitive_flag;
-    boost::optional<bool> invert_flag;
+
+    struct Flags {
+        boost::optional<bool> primitive_flag;
+        boost::optional<bool> invert_flag;
+    } flags;
+
+    bool PrimitiveFlag() const {
+        return flags.primitive_flag && *flags.primitive_flag;
+    }
+
+    bool InvertFlag() const {
+        return flags.invert_flag && *flags.invert_flag;
+    }
 };
 
 struct StatementDeclaration {

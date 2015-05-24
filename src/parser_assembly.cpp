@@ -105,11 +105,16 @@ BOOST_FUSION_ADAPT_STRUCT(
 )
 
 BOOST_FUSION_ADAPT_STRUCT(
+    SetEmitInstruction::Flags,
+    (boost::optional<bool>, primitive_flag)
+    (boost::optional<bool>, invert_flag)
+)
+
+BOOST_FUSION_ADAPT_STRUCT(
     SetEmitInstruction,
     (OpCode, opcode)
     (unsigned, vertex_id)
-    (boost::optional<bool>, primitive_flag)
-    (boost::optional<bool>, invert_flag)
+    (SetEmitInstruction::Flags, flags)
 )
 
 BOOST_FUSION_ADAPT_STRUCT(
@@ -673,15 +678,19 @@ struct SetEmitParser : qi::grammar<Iterator, SetEmitInstruction(), AssemblySkipp
 
         opcode = qi::lexeme[qi::no_case[opcodes_setemit] >> &ascii::space];
 
-        auto prim_flag = qi::lit("prim") >> &(!ascii::alnum) >> qi::attr(true);
-        auto inv_flag = qi::lit("inv") >> &(!ascii::alnum) >> qi::attr(true);
+        vertex_id = qi::uint_;
+        prim_flag = qi::lit("prim") >> &(!ascii::alnum) >> qi::attr(true);
+        inv_flag = qi::lit("inv") >> &(!ascii::alnum) >> qi::attr(true);
+        flags = ((comma_rule >> prim_flag) ^ (comma_rule >> inv_flag));
 
-        setemit_instruction = ((opcode > qi::uint_)
-                              >> ((comma_rule >> prim_flag) ^ (comma_rule >> inv_flag)))
-                              > end_of_statement;
+        setemit_instruction = ((opcode >> vertex_id) >> (flags | qi::attr(SetEmitInstruction::Flags{}))) > end_of_statement;
 
         // Error handling
         BOOST_SPIRIT_DEBUG_NODE(opcode);
+        BOOST_SPIRIT_DEBUG_NODE(vertex_id);
+        BOOST_SPIRIT_DEBUG_NODE(prim_flag);
+        BOOST_SPIRIT_DEBUG_NODE(inv_flag);
+        BOOST_SPIRIT_DEBUG_NODE(flags);
         BOOST_SPIRIT_DEBUG_NODE(setemit_instruction);
 
         qi::on_error<qi::fail>(setemit_instruction, error_handler(phoenix::ref(diagnostics), _1, _2, _3, _4));
@@ -693,6 +702,10 @@ struct SetEmitParser : qi::grammar<Iterator, SetEmitInstruction(), AssemblySkipp
 
     // Rule-ified symbols, which can be assigned debug names
     qi::rule<Iterator, OpCode(),                  Skipper> opcode;
+    qi::rule<Iterator, unsigned int(),            Skipper> vertex_id;
+    qi::rule<Iterator, bool(),                    Skipper> prim_flag;
+    qi::rule<Iterator, bool(),                    Skipper> inv_flag;
+    qi::rule<Iterator, SetEmitInstruction::Flags(), Skipper> flags;
 
     // Building blocks
     qi::rule<Iterator,                            Skipper>& end_of_statement;

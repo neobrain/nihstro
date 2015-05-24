@@ -163,6 +163,7 @@ int main(int argc, char *argv[])
                       << " (" << std::hex << std::setw(16) << std::setfill('0') << (uint64_t)info.hex << std::setfill(' ') << ")" << std::endl;
 
         size_t max_uniform_name_length = [&]() {
+            // TODO: This segfaults if uniform_table is empty!
             return std::max_element(parser.shader_info.uniform_table.begin(), parser.shader_info.uniform_table.end(),
                                     [](const UniformInfo& i1, UniformInfo& i2) { return i1.name.length() < i2.name.length(); }
                                    )->name.length();
