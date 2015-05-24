@@ -32,6 +32,7 @@
 
 #include <stack>
 
+#include <boost/program_options.hpp>
 #include <boost/range/adaptor/sliced.hpp>
 #include <boost/range/algorithm/count_if.hpp>
 
@@ -363,13 +364,37 @@ static size_t FindOrAddSwizzlePattern(std::vector<SwizzlePattern>& swizzle_patte
 
 int main(int argc, char* argv[])
 {
-    if (argc < 2) {
-        std::cerr << "No output filename given" << std::endl;
-        return 1;
-    }
+    std::string input_filename;
+    std::string output_filename;
+    std::string entry_point;
+    bool geo_shader;
 
-    if (argc < 3) {
-        std::cerr << "No input filenames given" << std::endl;
+    try {
+        boost::program_options::variables_map vm;
+        boost::program_options::options_description desc;
+        desc.add_options()
+            ("help,h", "Print this description")
+            ("input,i", boost::program_options::value<std::string>(&input_filename)->required(), "Input filename")
+            ("output,o", boost::program_options::value<std::string>(&output_filename)->required(), "Output filename")
+            ("entrypoint,e", boost::program_options::value<std::string>(&entry_point)->default_value("main"), "Shader entry point")
+            ("geo_shader,g", boost::program_options::bool_switch(&geo_shader), "Compile a geometry shader")
+            ;
+
+        boost::program_options::positional_options_description p;
+        p.add("input", 1);
+        boost::program_options::store(boost::program_options::command_line_parser(argc, argv).options(desc).positional(p).run(), vm);
+
+        if (vm.count("help"))
+        {
+            std::cerr << "Usage: nihstro-assemble <input_filename> [options]" << std::endl;
+            std::cerr << desc;
+            return 0;
+        }
+
+        boost::program_options::notify(vm);
+    } catch(std::exception& exception) {
+        std::cerr << "Failed to parse command line options:" << std::endl;
+        std::cerr << exception.what() << std::endl;
         return 1;
     }
 
@@ -377,9 +402,6 @@ int main(int argc, char* argv[])
     std::string::iterator begin;
     std::string::iterator preparse_begin;
     unsigned code_line = 0;
-
-    std::string output_filename = argv[1];
-    std::string input_filename = argv[2];
 
     std::ifstream input_file(input_filename);
     if (input_file)
@@ -542,9 +564,15 @@ int main(int argc, char* argv[])
             OpCode opcode = statement_simple;
 
             switch (opcode) {
+
+            case OpCode::Id::EMIT:
+                if (!geo_shader) {
+                    std::cerr << "Warning: Encountered EMIT while compiling a vertex shader. Did you mean to compile a geometry shader?" << std::endl;
+                }
+                // fall through:
+
             case OpCode::Id::NOP:
             case OpCode::Id::END:
-            case OpCode::Id::EMIT:
             {
                 Instruction shinst;
                 shinst.hex = 0;
@@ -1113,6 +1141,10 @@ int main(int argc, char* argv[])
             instructions.push_back(shinst);
             ++program_write_offset;
         } else if (parser.ParseSetEmit(begin, input_code.end(), &statement_setemit)) {
+            if (!geo_shader) {
+                std::cerr << "Warning: Encountered SETEMIT while compiling a vertex shader. Did you mean to compile a geometry shader?" << std::endl;
+            }
+
             Instruction shinst;
             shinst.hex = 0;
             shinst.opcode = statement_setemit.opcode;
@@ -1256,11 +1288,11 @@ int main(int argc, char* argv[])
 
     uint32_t main_offset = [&]() {
                                for (auto& label : label_table) {
-                                   if ("main" == symbol_table[label.symbol_table_index]) {
+                                   if (entry_point == symbol_table[label.symbol_table_index]) {
                                        return GetSymbolTableEntryByteOffset(label.symbol_table_index);
                                    }
                                }
-                               throw "No main label specified";
+                               throw "No label called \"" + entry_point + "\" specified for the entry point";
                            }();
 
     struct WritingQueue {
@@ -1290,6 +1322,7 @@ int main(int argc, char* argv[])
 
     memset(&dvle, 0, sizeof(dvle));
     dvle.magic_word = DVLEHeader::MAGIC_WORD;
+    dvle.type = geo_shader ? DVLEHeader::ShaderType::GEOMETRY : DVLEHeader::ShaderType::VERTEX;
 
     writing_queue.Queue((uint8_t*)&dvlb, sizeof(dvlb));
     uint32_t dvlp_offset = writing_queue.Queue((uint8_t*)&dvlp, sizeof(dvlp));
