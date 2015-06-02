@@ -698,8 +698,10 @@ int main(int argc, char* argv[])
 
                     // If no swizzler have been specified, use .xyzw - compile errors triggered by this are intended! (accessing subvectors should be done explicitly)
                     InputSwizzlerMask input_dest_mask = arguments[0].mask;
-                    InputSwizzlerMask input_mask_src1;
-                    InputSwizzlerMask input_mask_src2;
+                    InputSwizzlerMask input_mask_src1 = InputSwizzlerMask::FullMask();
+                    InputSwizzlerMask input_mask_src2 = InputSwizzlerMask::FullMask();
+                    bool negate_src1 = false;
+                    bool negate_src2 = false;
 
                     bool inverse_instruction_format = false;
 
@@ -751,9 +753,11 @@ int main(int argc, char* argv[])
                             shinst.common.src2 = SourceRegister::FromTypeAndIndex(arguments[2].GetType(), arguments[2].GetIndex());
                         }
                         input_mask_src2 = arguments[2].mask;
+                        negate_src2 = arguments[2].negate;
                     }
 
                     input_mask_src1 = arguments[1].mask;
+                    negate_src1 = arguments[1].negate;
 
                     shinst.common.dest = DestRegister::FromTypeAndIndex(arguments[0].GetType(), arguments[0].GetIndex());
                     if (inverse_instruction_format) {
@@ -804,7 +808,7 @@ int main(int argc, char* argv[])
                         mask_src1 = SourceSwizzlerMask::AccordingToDestMask(input_mask_src1, dest_mask);
                         mask_src2 = SourceSwizzlerMask::AccordingToDestMask(input_mask_src2, dest_mask);
                     }
-                    shinst.common.operand_desc_id = FindOrAddSwizzlePattern(swizzle_patterns, dest_mask, mask_src1, mask_src2, arguments[1].negate, arguments[2].negate);
+                    shinst.common.operand_desc_id = FindOrAddSwizzlePattern(swizzle_patterns, dest_mask, mask_src1, mask_src2, negate_src1, negate_src2);
 
                     instructions.push_back(shinst);
                     break;
@@ -817,17 +821,11 @@ int main(int argc, char* argv[])
                     AssertRegisterReadable(arguments[2].GetType());
                     AssertRegisterReadable(arguments[3].GetType());
 
-                    // If no swizzler have been specified, use .xyzw - compile errors triggered by this are intended! (accessing subvectors should be done explicitly)
-                    InputSwizzlerMask input_dest_mask = arguments[0].mask;
-                    InputSwizzlerMask input_mask_src1;
-                    InputSwizzlerMask input_mask_src2;
-                    InputSwizzlerMask input_mask_src3;
-
-                    bool inverse_instruction_format = false;
-
                     if (boost::count_if(arguments | boost::adaptors::sliced(1,3), [](const Atomic& a) { return a.IsExtended(); }) >= 3) {
                         throw "Not more than two input registers may be floating point uniforms and/or use dynamic indexing";
                     }
+
+                    bool inverse_instruction_format = false;
 
                     // If third argument is an extended input, use MADI instead
                     if (arguments[3].IsExtended()) {
@@ -849,9 +847,12 @@ int main(int argc, char* argv[])
                         shinst.mad.src2 = SourceRegister::FromTypeAndIndex(arguments[2].GetType(), arguments[2].GetIndex());
                         shinst.mad.src3 = SourceRegister::FromTypeAndIndex(arguments[3].GetType(), arguments[3].GetIndex());
                     }
-                    input_mask_src1 = arguments[1].mask;
-                    input_mask_src2 = arguments[2].mask;
-                    input_mask_src3 = arguments[3].mask;
+
+                    // If no swizzler have been specified, use .xyzw - shader compile errors triggered by this are intended! (accessing subvectors should be done explicitly)
+                    InputSwizzlerMask input_dest_mask = arguments[0].mask;
+                    InputSwizzlerMask input_mask_src1 = arguments[1].mask;
+                    InputSwizzlerMask input_mask_src2 = arguments[2].mask;
+                    InputSwizzlerMask input_mask_src3 = arguments[3].mask;
 
                     shinst.mad.dest = DestRegister::FromTypeAndIndex(arguments[0].GetType(), arguments[0].GetIndex());
 
@@ -1271,7 +1272,9 @@ int main(int argc, char* argv[])
             identifier_table.insert({idname, ret});
         } else if (begin != input_code.end()) {
             // TODO: Actually, this should be a hint about invalid intruction formats, but on Windows even EOF triggers this for some reason.
-            std::cerr << "Warning: Unknown instruction format, treating like EOF: \"" << std::string(preparse_begin, std::find(preparse_begin, input_code.end(), '\n')) << "\"" << std::endl;
+
+            std::cerr << input_filename << ":" << code_line << ": warning: Unknown instruction format, treating like EOF: \"" << std::endl;
+            std::cerr << std::string(preparse_begin, std::find(preparse_begin, input_code.end(), '\n')) << "\"" << std::endl;
             break;
         }
     }
