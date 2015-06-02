@@ -133,6 +133,15 @@ BOOST_FUSION_ADAPT_STRUCT(
     (StatementDeclaration::Extra, extra)
 )
 
+// Manually define a swap() overload for qi::hold to work.
+namespace boost {
+namespace spirit {
+void swap(nihstro::Condition& a, nihstro::Condition& b) {
+    boost::fusion::swap(a, b);
+}
+}
+}
+
 class Diagnostics
 {
 public:
