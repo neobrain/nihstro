@@ -154,10 +154,8 @@ struct DestRegister {
     }
 
     RegisterType GetRegisterType() const {
-        if (value < 0x8)
+        if (value < 0x10)
             return RegisterType::Output;
-        else if (value < 0x10)
-            return RegisterType::Unknown;
         else
             return RegisterType::Temporary;
     }
