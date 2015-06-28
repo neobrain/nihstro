@@ -786,18 +786,16 @@ struct DeclarationParser : qi::grammar<Iterator, StatementDeclaration(), Assembl
         constant = (qi::repeat(1)[qi::float_]
                                   | (qi::lit('(') > (qi::float_ % qi::lit(',')) > qi::lit(')')));
 
-        auto dummy_const = qi::attr(std::vector<float>());
-        auto dummy_semantic = qi::attr(boost::optional<OutputRegisterInfo::Type>());
+        dummy_const = qi::attr(std::vector<float>());
+        dummy_semantic = qi::attr(boost::optional<OutputRegisterInfo::Type>());
 
         // match a constant or a semantic, and fill the respective other one with a dummy
         const_or_semantic = (dummy_const >> output_semantics_rule) | (constant >> dummy_semantic);
 
-        auto declaration_begin = ((qi::lit('.') > alias_identifier) >> identifier >> -(qi::lit('-') > identifier) >> -(qi::lit('.') > swizzle_mask));
-
         // TODO: Would like to use +ascii::blank instead, but somehow that fails to parse lines like ".alias name o2.xy texcoord0" correctly
-        auto string_as = qi::omit[qi::no_skip[*/*+*/ascii::blank >> qi::lit("as") >> +ascii::blank]];
+        string_as = qi::omit[qi::no_skip[*/*+*/ascii::blank >> qi::lit("as") >> +ascii::blank]];
 
-        declaration = declaration_begin
+        declaration = ((qi::lit('.') > alias_identifier) >> identifier >> -(qi::lit('-') > identifier) >> -(qi::lit('.') > swizzle_mask))
                        >> (
                             (string_as > const_or_semantic)
                             | (dummy_const >> dummy_semantic)
@@ -819,6 +817,10 @@ struct DeclarationParser : qi::grammar<Iterator, StatementDeclaration(), Assembl
     }
 
     CommonRules<Iterator> common;
+
+    qi::rule<Iterator, Skipper> string_as;
+    qi::rule<Iterator, std::vector<float>(), Skipper> dummy_const;
+    qi::rule<Iterator, boost::optional<OutputRegisterInfo::Type>(), Skipper> dummy_semantic;
 
     qi::symbols<char, OutputRegisterInfo::Type>   output_semantics;
 
