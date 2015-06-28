@@ -24,8 +24,15 @@
 
 #define RGBA8(r,g,b,a) ((((r)&0xFF)<<24) | (((g)&0xFF)<<16) | (((b)&0xFF)<<8) | (((a)&0xFF)<<0))
 
+//transfer from GPU output buffer to actual framebuffer flags
+#define DISPLAY_TRANSFER_FLAGS \
+	(GX_TRANSFER_FLIP_VERT(0) | GX_TRANSFER_OUT_TILED(0) | GX_TRANSFER_RAW_COPY(0) | \
+	 GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FMT_RGBA8) | GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_FMT_RGB8) | \
+	 GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_X))
+
 //shader structure
-DVLB_s* shader;
+DVLB_s* dvlb;
+shaderProgram_s shader;
 //texture data pointer
 u32* texData;
 //vbo structure
@@ -129,36 +136,34 @@ void renderFrame()
 {
 	GPU_SetViewport((u32*)osConvertVirtToPhys((u32)gpuDOut),(u32*)osConvertVirtToPhys((u32)gpuOut),0,0,240*2,400);
 
-	GPU_DepthRange(-1.0f, 0.0f);
+	GPU_DepthMap(-1.0f, 0.0f);
 	GPU_SetFaceCulling(GPU_CULL_BACK_CCW);
 	GPU_SetStencilTest(false, GPU_ALWAYS, 0x00, 0xFF, 0x00);
 	GPU_SetStencilOp(GPU_KEEP, GPU_KEEP, GPU_KEEP);
 	GPU_SetBlendingColor(0,0,0,0);
 	GPU_SetDepthTestAndWriteMask(true, GPU_GREATER, GPU_WRITE_ALL);
 
-	GPUCMD_AddSingleParam(0x00010062, 0);
-	GPUCMD_AddSingleParam(0x000F0118, 0);
+	GPUCMD_AddMaskedWrite(GPUREG_0062, 0x1, 0);
+	GPUCMD_AddWrite(GPUREG_0118, 0);
 
-	//setup shader
-	SHDR_UseProgram(shader, 0);
-
+	//lighting stuff
 		static double lightAngle2 = 0;
 		lightAngle2 += 0.03;
 		static double lightAngle3 = 0;
 		lightAngle3 += 0.1;
 
 		vect3Df_s lightDir[3] = { vnormf(vect3Df(cos(lightAngle), -1.0f, sin(lightAngle))),
-								vnormf(vect3Df(cos(lightAngle2), -1.0f, sin(lightAngle2))),
-								vnormf(vect3Df(cos(lightAngle3*2), cos(lightAngle3), sin(lightAngle3))) };
+		                          vnormf(vect3Df(cos(lightAngle2), -1.0f, sin(lightAngle2))),
+		                          vnormf(vect3Df(cos(lightAngle3*2), cos(lightAngle3), sin(lightAngle3))) };
 
-	unsigned num_lights = 3;
-	unsigned light_size = 3;
+		unsigned num_lights = 3;
+		unsigned light_size = 3;
 
-	uint32_t val = ((num_lights-1u))|(0<<8)|(light_size<<16u);
+		uint32_t val = ((num_lights-1u))|(0<<8)|(light_size<<16u);
 
-	// Set int uniforms
-	GPUCMD_AddSingleParam(0x000F0282, val);
-	GPUCMD_AddSingleParam(0x000F02b2, val);
+		// Set int uniforms
+		GPUCMD_AddWrite(GPUREG_GSH_INTUNIFORM_I1, val);
+		GPUCMD_AddWrite(GPUREG_VSH_INTUNIFORM_I1, val);
 
 	GPU_SetAlphaBlending(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA, GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA);
 	GPU_SetAlphaTest(false, GPU_ALWAYS, 0x00);
@@ -178,23 +183,41 @@ void renderFrame()
 	GPU_SetDummyTexEnv(4);
 	GPU_SetDummyTexEnv(5);
 
-
 	//setup lighting (this is specific to our shader)
-		GPU_SetUniform(SHDR_GetUniformRegister(shader, "light_dir", 0), (u32*)(float[]){0.0f, -lightDir[0].z, -lightDir[0].y, -lightDir[0].x}, 1);
-		GPU_SetUniform(SHDR_GetUniformRegister(shader, "light_diffuse", 0), (u32*)(float[]){0.2f, 0.2f, 0.2f, 0.2f}, 1);
-		GPU_SetUniform(SHDR_GetUniformRegister(shader, "light_ambient", 0), (u32*)(float[]){0.4f, 0.4f, 0.4f, 0.4f}, 1);
-		GPU_SetUniform(light_size + SHDR_GetUniformRegister(shader, "light_dir", 0), (u32*)(float[]){0.0f, -lightDir[1].z, -lightDir[1].y, -lightDir[1].x}, 1);
-		GPU_SetUniform(light_size + SHDR_GetUniformRegister(shader, "light_diffuse", 0), (u32*)(float[]){0.f, 0.f, 0.5f, 0.f}, 1);
-		GPU_SetUniform(light_size + SHDR_GetUniformRegister(shader, "light_ambient", 0), (u32*)(float[]){0.f, 0.f, 0.f, 0.f}, 1);
-		GPU_SetUniform(light_size*2 + SHDR_GetUniformRegister(shader, "light_dir", 0), (u32*)(float[]){0.0f, -lightDir[2].z, -lightDir[2].y, -lightDir[2].x}, 1);
-		GPU_SetUniform(light_size*2 + SHDR_GetUniformRegister(shader, "light_diffuse", 0), (u32*)(float[]){0.0f, 0.5f, 0.f, 0.f}, 1);
-		GPU_SetUniform(light_size*2 + SHDR_GetUniformRegister(shader, "light_ambient", 0), (u32*)(float[]){0.f, 0.f, 0.f, 0.f}, 1);
+		GPU_SetFloatUniform(GPU_VERTEX_SHADER, shaderInstanceGetUniformLocation(shader.vertexShader, "light_dir"), (u32*)(float[]){0.0f, -lightDir[0].z, -lightDir[0].y, -lightDir[0].x}, 1);
+		GPU_SetFloatUniform(GPU_VERTEX_SHADER, shaderInstanceGetUniformLocation(shader.vertexShader, "light_diffuse"), (u32*)(float[]){0.2f, 0.2f, 0.2f, 0.2f}, 1);
+		GPU_SetFloatUniform(GPU_VERTEX_SHADER, shaderInstanceGetUniformLocation(shader.vertexShader, "light_ambient"), (u32*)(float[]){0.4f, 0.4f, 0.4f, 0.4f}, 1);
+		GPU_SetFloatUniform(GPU_VERTEX_SHADER, light_size + shaderInstanceGetUniformLocation(shader.vertexShader, "light_dir"), (u32*)(float[]){0.0f, -lightDir[1].z, -lightDir[1].y, -lightDir[1].x}, 1);
+		GPU_SetFloatUniform(GPU_VERTEX_SHADER, light_size + shaderInstanceGetUniformLocation(shader.vertexShader, "light_diffuse"), (u32*)(float[]){0.f, 0.f, 0.5f, 0.f}, 1);
+		GPU_SetFloatUniform(GPU_VERTEX_SHADER, light_size + shaderInstanceGetUniformLocation(shader.vertexShader, "light_ambient"), (u32*)(float[]){0.f, 0.f, 0.f, 0.f}, 1);
+		GPU_SetFloatUniform(GPU_VERTEX_SHADER, light_size*2 + shaderInstanceGetUniformLocation(shader.vertexShader, "light_dir"), (u32*)(float[]){0.0f, -lightDir[2].z, -lightDir[2].y, -lightDir[2].x}, 1);
+		GPU_SetFloatUniform(GPU_VERTEX_SHADER, light_size*2 + shaderInstanceGetUniformLocation(shader.vertexShader, "light_diffuse"), (u32*)(float[]){0.0f, 0.5f, 0.f, 0.f}, 1);
+		GPU_SetFloatUniform(GPU_VERTEX_SHADER, light_size*2 + shaderInstanceGetUniformLocation(shader.vertexShader, "light_ambient"), (u32*)(float[]){0.f, 0.f, 0.f, 0.f}, 1);
 
 	//texturing stuff
-		GPU_SetTexture(GPU_TEXUNIT0, (u32*)osConvertVirtToPhys((u32)texData),128,128,GPU_TEXTURE_MAG_FILTER(GPU_NEAREST)|GPU_TEXTURE_MIN_FILTER(GPU_NEAREST),GPU_RGBA8);
-		GPU_SetAttributeBuffers(3, (u32*)osConvertVirtToPhys((u32)texData),
-			GPU_ATTRIBFMT(0, 3, GPU_FLOAT)|GPU_ATTRIBFMT(1, 2, GPU_FLOAT)|GPU_ATTRIBFMT(2, 3, GPU_FLOAT),
-			0xFFC, 0x210, 1, (u32[]){0x00000000}, (u64[]){0x210}, (u8[]){3});
+		GPU_SetTexture(
+			GPU_TEXUNIT0, //texture unit
+			(u32*)osConvertVirtToPhys((u32)texData), //data buffer
+			128, //texture width
+			128, //texture height
+			GPU_TEXTURE_MAG_FILTER(GPU_NEAREST) | GPU_TEXTURE_MIN_FILTER(GPU_NEAREST), //texture params
+			GPU_RGBA8 //texture pixel format
+		);
+
+		GPU_SetAttributeBuffers(
+			3, //3 attributes: vertices, texcoords, and normals
+			(u32*)osConvertVirtToPhys((u32)texData), //mesh buffer
+			GPU_ATTRIBFMT(0, 3, GPU_FLOAT) | // GPU Input attribute register 0 (v0): 3 floats (position)
+			GPU_ATTRIBFMT(1, 2, GPU_FLOAT) | // GPU Input attribute register 1 (v1): 2 floats (texcoord)
+			GPU_ATTRIBFMT(2, 3, GPU_FLOAT),  // GPU Input attribute register 2 (v2): 3 floats (normal)
+			0xFFC,
+			0x210,
+			1,
+			(u32[]){0x00000000},
+			(u64[]){0x210},
+			(u8[]){3}
+		);
+
 	//initialize projection matrix to standard perspective stuff
 	gsMatrixMode(GS_PROJECTION);
 	gsProjectionMatrix(80.0f*M_PI/180.0f, 240.0f/400.0f, 0.01f, 100.0f);
@@ -222,12 +245,6 @@ int main(int argc, char** argv)
 	//let GFX know we're ok with doing stereoscopic 3D rendering
 	gfxSet3D(true);
 
-	//load our vertex shader binary
-	shader=SHDR_ParseSHBIN((u32*)test_vsh_shbin, test_vsh_shbin_size);
-
-	//initialize GS
-	gsInit(shader);
-
 	//allocate our GPU command buffers
 	//they *have* to be on the linear heap
 	u32 gpuCmdSize=0x40000;
@@ -236,6 +253,19 @@ int main(int argc, char** argv)
 
 	//actually reset the GPU
 	GPU_Reset(NULL, gpuCmd, gpuCmdSize);
+
+	//load our vertex shader binary
+	dvlb=DVLB_ParseFile((u32*)test_vsh_shbin, test_vsh_shbin_size);
+	shaderProgramInit(&shader);
+	shaderProgramSetVsh(&shader, &dvlb->DVLE[0]);
+
+	//initialize GS
+	gsInit(&shader);
+
+	// Flush the command buffer so that the shader upload gets executed
+	GPUCMD_Finalize();
+	GPUCMD_FlushAndRun(NULL);
+	gspWaitForP3D();
 
 	//create texture
 	texData=(u32*)linearMemAlign(texture_bin_size, 0x80); //textures need to be 0x80-byte aligned
@@ -305,12 +335,12 @@ int main(int argc, char** argv)
 
 			//we wait for the left buffer to finish drawing
 			gspWaitForP3D();
-			GX_SetDisplayTransfer(NULL, (u32*)gpuOut, 0x019001E0, (u32*)gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL), 0x019001E0, 0x01001000);
+			GX_SetDisplayTransfer(NULL, (u32*)gpuOut, GX_BUFFER_DIM(240*2, 400), (u32*)gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL), GX_BUFFER_DIM(240*2, 400), DISPLAY_TRANSFER_FLAGS);
 			gspWaitForPPF();
 
 			//we draw the right buffer, wait for it to finish and then switch back to left one
 			//clear the screen
-			GX_SetMemoryFill(NULL, (u32*)gpuOut, backgroundColor, (u32*)&gpuOut[0x2EE00], 0x201, (u32*)gpuDOut, 0x00000000, (u32*)&gpuDOut[0x2EE00], 0x201);
+			GX_SetMemoryFill(NULL, (u32*)gpuOut, backgroundColor, (u32*)&gpuOut[0x2EE00], GX_FILL_TRIGGER | GX_FILL_32BIT_DEPTH , (u32*)gpuDOut, 0x00000000, (u32*)&gpuDOut[0x2EE00], GX_FILL_TRIGGER | GX_FILL_32BIT_DEPTH);
 			gspWaitForPSC0();
 
 			//draw the right framebuffer
@@ -318,7 +348,7 @@ int main(int argc, char** argv)
 			gspWaitForP3D();
 
 			//transfer from GPU output buffer to actual framebuffer
-			GX_SetDisplayTransfer(NULL, (u32*)gpuOut, 0x019001E0, (u32*)gfxGetFramebuffer(GFX_TOP, GFX_RIGHT, NULL, NULL), 0x019001E0, 0x01001000);
+			GX_SetDisplayTransfer(NULL, (u32*)gpuOut, GX_BUFFER_DIM(240*2, 400), (u32*)gfxGetFramebuffer(GFX_TOP, GFX_RIGHT, NULL, NULL), GX_BUFFER_DIM(240*2, 400), DISPLAY_TRANSFER_FLAGS);
 			gspWaitForPPF();
 			GPUCMD_SetBuffer(gpuCmd, gpuCmdSize, 0);
 		}else{
@@ -329,12 +359,12 @@ int main(int argc, char** argv)
 			gspWaitForP3D();
 
 			//clear the screen
-			GX_SetDisplayTransfer(NULL, (u32*)gpuOut, 0x019001E0, (u32*)gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL), 0x019001E0, 0x01001000);
+			GX_SetDisplayTransfer(NULL, (u32*)gpuOut, GX_BUFFER_DIM(240*2, 400), (u32*)gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL), GX_BUFFER_DIM(240*2, 400), DISPLAY_TRANSFER_FLAGS);
 			gspWaitForPPF();
 		}
 
 		//clear the screen
-		GX_SetMemoryFill(NULL, (u32*)gpuOut, backgroundColor, (u32*)&gpuOut[0x2EE00], 0x201, (u32*)gpuDOut, 0x00000000, (u32*)&gpuDOut[0x2EE00], 0x201);
+		GX_SetMemoryFill(NULL, (u32*)gpuOut, backgroundColor, (u32*)&gpuOut[0x2EE00], GX_FILL_TRIGGER | GX_FILL_32BIT_DEPTH, (u32*)gpuDOut, 0x00000000, (u32*)&gpuDOut[0x2EE00], GX_FILL_TRIGGER | GX_FILL_32BIT_DEPTH);
 		gspWaitForPSC0();
 		gfxSwapBuffersGpu();
 
@@ -342,6 +372,8 @@ int main(int argc, char** argv)
 	}
 
 	gsExit();
+	shaderProgramFree(&shader);
+	DVLB_Free(dvlb);
 	gfxExit();
 	return 0;
 }
