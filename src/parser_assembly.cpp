@@ -33,6 +33,7 @@
 #include <boost/spirit/include/qi.hpp>
 
 #include "nihstro/parser_assembly.h"
+#include "nihstro/parser_assembly_private.h"
 
 #include "nihstro/shader_binary.h"
 #include "nihstro/shader_bytecode.h"
@@ -142,78 +143,7 @@ void swap(nihstro::Condition& a, nihstro::Condition& b) {
 }
 }
 
-class Diagnostics
-{
-public:
-    // Ass a new diagnostic message corresponding to the specified rule tag
-    void Add(const std::string& tag, const char* diagnostic) {
-        entries[tag] = diagnostic;
-    }
-
-    // Lookup the diagnostic of the specified rule tag and return it (or nullptr if it can't be found)
-    const char* operator [](const char* tag) const {
-        auto it = entries.find(tag);
-        if (it == entries.end())
-            return nullptr;
-        else
-            return it->second;
-    }
-
-private:
-    std::map<std::string, const char*> entries;
-};
-
-struct ErrorHandler
-{
-    template <class, class, class, class, class>
-    struct result { typedef void type; };
-
-    template <class D, class B, class E, class W, class I>
-    void operator ()(const D& diagnostics, B begin, E end, W where, const I& info) const
-    {
-        const spirit::utf8_string& tag(info.tag);
-        const char* const what(tag.c_str());
-        const char* diagnostic(diagnostics[what]);
-        std::string scratch;
-        if (!diagnostic) {
-            scratch.reserve(25 + tag.length());
-            scratch = "Expected ";
-            scratch += tag;
-            diagnostic = scratch.c_str();
-        }
-
-        auto newline_iterator = std::find(begin, end, '\n');
-
-        std::stringstream err;
-        err << diagnostic << std::endl
-            << std::string(4, ' ') << std::string(begin, newline_iterator) << std::endl
-            << std::string(4 + std::distance(begin, where), ' ') << '^' << std::endl;
-        throw err.str();
-    }
-};
 phoenix::function<ErrorHandler> error_handler;
-
-template<typename Iterator>
-struct AssemblySkipper : public qi::grammar<Iterator> {
-
-    AssemblySkipper() : AssemblySkipper::base_type(skip) {
-        comments = qi::char_("//") >> *(qi::char_ - qi::eol);
-
-        skip = +(comments | ascii::blank);
-    }
-
-    qi::rule<Iterator> comments;
-    qi::rule<Iterator> skip;
-};
-
-namespace std {
-
-std::ostream& operator<<(std::ostream& os, const OpCode& opcode) {
-    // TODO: Should print actual opcode here..
-    return os << static_cast<uint32_t>(static_cast<OpCode::Id>(opcode));
-}
-
-}
 
 /**
  * Implementation of transform_attribute from std::vector<InputSwizzlerMask::Component> to InputSwizzlerMask.
@@ -245,56 +175,52 @@ struct transform_attribute<InputSwizzlerMask, std::vector<InputSwizzlerMask::Com
 }}} // namespaces
 
 template<typename Iterator>
-struct CommonRules {
-    using Skipper = AssemblySkipper<Iterator>;
+CommonRules<Iterator>::CommonRules(const ParserContext& context) {
+    // Setup symbol table
+    opcodes_trivial.add
+               ( "nop",      OpCode::Id::NOP      )
+               ( "end",      OpCode::Id::END      )
+               ( "emit",     OpCode::Id::EMIT     )
+               ( "else",     OpCode::Id::ELSE     )
+               ( "endif",    OpCode::Id::ENDIF    )
+               ( "endloop",  OpCode::Id::ENDLOOP  );
 
-    CommonRules(const ParserContext& context) {
+    opcodes_float[0].add
+               ( "mova",     OpCode::Id::MOVA     );
 
-        // Setup symbol table
-        opcodes_trivial.add
-                   ( "nop",      OpCode::Id::NOP      )
-                   ( "end",      OpCode::Id::END      )
-                   ( "emit",     OpCode::Id::EMIT     )
-                   ( "else",     OpCode::Id::ELSE     )
-                   ( "endif",    OpCode::Id::ENDIF    )
-                   ( "endloop",  OpCode::Id::ENDLOOP  );
+    opcodes_float[1].add
+               ( "exp",      OpCode::Id::EX2      )
+               ( "log",      OpCode::Id::LG2      )
+               ( "flr",      OpCode::Id::FLR      )
+               ( "rcp",      OpCode::Id::RCP      )
+               ( "rsq",      OpCode::Id::RSQ      )
+               ( "mov",      OpCode::Id::MOV      );
+    opcodes_float[2].add
+               ( "add",      OpCode::Id::ADD      )
+               ( "dp3",      OpCode::Id::DP3      )
+               ( "dp4",      OpCode::Id::DP4      )
+               ( "dph",      OpCode::Id::DPH      )
+               ( "mul",      OpCode::Id::MUL      )
+               ( "sge",      OpCode::Id::SGE      )
+               ( "slt",      OpCode::Id::SLT      )
+               ( "max",      OpCode::Id::MAX      )
+               ( "min",      OpCode::Id::MIN      );
+    opcodes_float[3].add
+               ( "mad",      OpCode::Id::MAD      );
 
-        opcodes_float[0].add
-                   ( "mova",     OpCode::Id::MOVA     );
+    opcodes_compare.add
+               ( "cmp",      OpCode::Id::CMP      );
 
-        opcodes_float[1].add
-                   ( "exp",      OpCode::Id::EX2      )
-                   ( "log",      OpCode::Id::LG2      )
-                   ( "flr",      OpCode::Id::FLR      )
-                   ( "rcp",      OpCode::Id::RCP      )
-                   ( "rsq",      OpCode::Id::RSQ      )
-                   ( "mov",      OpCode::Id::MOV      );
-        opcodes_float[2].add
-                   ( "add",      OpCode::Id::ADD      )
-                   ( "dp3",      OpCode::Id::DP3      )
-                   ( "dp4",      OpCode::Id::DP4      )
-                   ( "dph",      OpCode::Id::DPH      )
-                   ( "mul",      OpCode::Id::MUL      )
-                   ( "sge",      OpCode::Id::SGE      )
-                   ( "slt",      OpCode::Id::SLT      )
-                   ( "max",      OpCode::Id::MAX      )
-                   ( "min",      OpCode::Id::MIN      );
-        opcodes_float[3].add
-                   ( "mad",      OpCode::Id::MAD      );
+    opcodes_flowcontrol[0].add
+               ( "break",    OpCode::Id::BREAKC   )
+               ( "if",       OpCode::Id::GEN_IF   )
+               ( "loop",     OpCode::Id::LOOP     );
+    opcodes_flowcontrol[1].add
+               ( "jmp",      OpCode::Id::GEN_JMP  )
+               ( "call",     OpCode::Id::GEN_CALL );
 
-        opcodes_compare.add
-                   ( "cmp",      OpCode::Id::CMP      );
-
-        opcodes_flowcontrol[0].add
-                   ( "break",    OpCode::Id::BREAKC   )
-                   ( "if",       OpCode::Id::GEN_IF   )
-                   ( "loop",     OpCode::Id::LOOP     );
-        opcodes_flowcontrol[1].add
-                   ( "jmp",      OpCode::Id::GEN_JMP  )
-                   ( "call",     OpCode::Id::GEN_CALL );
-
-        opcodes_setemit.add
-                   ( "setemitraw", OpCode::Id::SETEMIT );
+    opcodes_setemit.add
+               ( "setemitraw", OpCode::Id::SETEMIT );
 
         signs.add( "+", +1)
                  ( "-", -1);
@@ -340,45 +266,10 @@ struct CommonRules {
         diagnostics.Add(index_expression.name(), "Expected index expression between '[' and ']'");
         diagnostics.Add(expression.name(), "Expected expression of a known identifier");
         diagnostics.Add(end_of_statement.name(), "Expected end of statement");
-    }
-
-    // Rule-ified symbols, which can be assigned names
-    qi::rule<Iterator,                            Skipper> peek_identifier;
-
-    // Building blocks
-    qi::rule<Iterator, std::string(),             Skipper> identifier;
-    qi::rule<Iterator, Expression(),              Skipper> expression;
-    qi::rule<Iterator,                            Skipper> end_of_statement;
-
-    qi::symbols<char, OpCode> opcodes_trivial;
-    qi::symbols<char, OpCode> opcodes_compare;
-    std::array<qi::symbols<char, OpCode>, 4> opcodes_float; // indexed by number of arguments
-    std::array<qi::symbols<char, OpCode>, 2> opcodes_flowcontrol;
-    qi::symbols<char, OpCode> opcodes_setemit;
-
-    qi::symbols<char, int>    signs;
-
-    qi::symbols<char, InputSwizzlerMask::Component>        swizzlers;
-    qi::rule<Iterator, InputSwizzlerMask(),       Skipper> swizzle_mask;
-
-    Diagnostics diagnostics;
-
-private:
-    qi::rule<Iterator, IndexExpression(),                             Skipper> index_expression;
-    qi::rule<Iterator, boost::variant<IntegerWithSign, Identifier>(), Skipper> index_expression_first_term;
-    qi::rule<Iterator, boost::variant<IntegerWithSign, Identifier>(), Skipper> index_expression_following_terms;
-
-    // Empty rule
-    qi::rule<Iterator,                            Skipper> opening_bracket;
-    qi::rule<Iterator,                            Skipper> closing_bracket;
-    qi::rule<Iterator, unsigned int(),            Skipper> uint_after_sign;
-};
+}
 
 template<typename Iterator, bool require_end_of_line>
-struct TrivialOpParser : qi::grammar<Iterator, OpCode(), AssemblySkipper<Iterator>> {
-    using Skipper = AssemblySkipper<Iterator>;
-
-    TrivialOpParser(const ParserContext& context)
+TrivialOpParser<Iterator, require_end_of_line>::TrivialOpParser(const ParserContext& context)
                 : TrivialOpParser::base_type(trivial_instruction),
                   common(context),
                   opcodes_trivial(common.opcodes_trivial),
@@ -404,30 +295,10 @@ struct TrivialOpParser : qi::grammar<Iterator, OpCode(), AssemblySkipper<Iterato
         BOOST_SPIRIT_DEBUG_NODE(trivial_instruction);
 
         qi::on_error<qi::fail>(trivial_instruction, error_handler(phoenix::ref(diagnostics), _1, _2, _3, _4));
-    }
+}
 
-    CommonRules<Iterator> common;
-
-    qi::symbols<char, OpCode>& opcodes_trivial;
-    qi::symbols<char, OpCode>& opcodes_compare;
-    std::array<qi::symbols<char, OpCode>, 4>& opcodes_float; // indexed by number of arguments
-    std::array<qi::symbols<char, OpCode>, 2>& opcodes_flowcontrol;
-
-    // Rule-ified symbols, which can be assigned names
-    qi::rule<Iterator, OpCode(), Skipper> opcode;
-
-    // Compounds
-    qi::rule<Iterator, OpCode(), Skipper> trivial_instruction;
-    qi::rule<Iterator,           Skipper>& end_of_statement;
-
-    Diagnostics diagnostics;
-};
-
-template<typename Iterator>
-struct FloatOpParser : qi::grammar<Iterator, FloatOpInstruction(), AssemblySkipper<Iterator>> {
-    using Skipper = AssemblySkipper<Iterator>;
-
-    FloatOpParser(const ParserContext& context)
+template<>
+FloatOpParser<std::string::iterator>::FloatOpParser(const ParserContext& context)
                 : FloatOpParser::base_type(float_instruction),
                   common(context),
                   opcodes_float(common.opcodes_float),
@@ -481,37 +352,10 @@ struct FloatOpParser : qi::grammar<Iterator, FloatOpInstruction(), AssemblySkipp
         diagnostics.Add(expression_chain[3].name(), "four arguments");
 
         qi::on_error<qi::fail>(float_instruction, error_handler(phoenix::ref(diagnostics), _1, _2, _3, _4));
-    }
-
-    CommonRules<Iterator> common;
-
-    std::array<qi::symbols<char, OpCode>, 4>& opcodes_float;
-
-    // Rule-ified symbols, which can be assigned names
-    qi::rule<Iterator, OpCode(),                  Skipper>  opcode[4];
-
-    // Building blocks
-    qi::rule<Iterator, Expression(),              Skipper>& expression;
-    qi::rule<Iterator, std::vector<Expression>(), Skipper>  expression_chain[4]; // sequence of instruction arguments
-    qi::rule<Iterator,                            Skipper>& end_of_statement;
-
-    // Compounds
-    qi::rule<Iterator, FloatOpInstruction(),    Skipper>    float_instr[4];
-    qi::rule<Iterator, FloatOpInstruction(),    Skipper>    float_instruction;
-
-    // Utility
-    qi::rule<Iterator,                            Skipper>  not_comma;
-
-    Diagnostics diagnostics;
-};
+}
 
 template<typename Iterator>
-struct CompareParser : qi::grammar<Iterator, CompareInstruction(), AssemblySkipper<Iterator>> {
-    using Skipper = AssemblySkipper<Iterator>;
-    using CompareOp = Instruction::Common::CompareOpType;
-    using CompareOpEnum = CompareOp::Op;
-
-    CompareParser(const ParserContext& context)
+CompareParser<Iterator>::CompareParser(const ParserContext& context)
                 : CompareParser::base_type(instruction),
                   common(context),
                   opcodes_compare(common.opcodes_compare),
@@ -548,40 +392,10 @@ struct CompareParser : qi::grammar<Iterator, CompareInstruction(), AssemblySkipp
         BOOST_SPIRIT_DEBUG_NODE(instruction);
 
         qi::on_error<qi::fail>(instruction, error_handler(phoenix::ref(diagnostics), _1, _2, _3, _4));
-    }
-
-    CommonRules<Iterator> common;
-
-    qi::symbols<char, OpCode>&                    opcodes_compare;
-    qi::symbols<char, CompareOpEnum>              compare_ops;
-
-    // Rule-ified symbols, which can be assigned debug names
-    qi::rule<Iterator, OpCode(),                  Skipper>    opcode;
-    qi::rule<Iterator, CompareOpEnum(),           Skipper>    compare_op;
-    qi::rule<Iterator, std::vector<CompareOpEnum>(), Skipper> two_ops;
-
-    // Building blocks
-    qi::rule<Iterator, Expression(),              Skipper>& expression;
-    qi::rule<Iterator, std::vector<Expression>(), Skipper>  two_expressions;
-    qi::rule<Iterator,                            Skipper>& end_of_statement;
-
-    // Compounds
-    qi::rule<Iterator, CompareInstruction(),    Skipper> instr[1];
-    qi::rule<Iterator, CompareInstruction(),    Skipper> instruction;
-
-    // Utility
-    qi::rule<Iterator,                            Skipper> not_comma;
-
-    Diagnostics diagnostics;
-};
+}
 
 template<typename Iterator>
-struct FlowControlParser : qi::grammar<Iterator, FlowControlInstruction(), AssemblySkipper<Iterator>> {
-    using Skipper = AssemblySkipper<Iterator>;
-    using ConditionOp = Instruction::FlowControlType;
-    using ConditionOpEnum = Instruction::FlowControlType::Op;
-
-    FlowControlParser(const ParserContext& context)
+FlowControlParser<Iterator>::FlowControlParser(const ParserContext& context)
                 : FlowControlParser::base_type(flow_control_instruction),
                   common(context),
                   opcodes_flowcontrol(common.opcodes_flowcontrol),
@@ -641,41 +455,10 @@ struct FlowControlParser : qi::grammar<Iterator, FlowControlInstruction(), Assem
         BOOST_SPIRIT_DEBUG_NODE(flow_control_instruction);
 
         qi::on_error<qi::fail>(flow_control_instruction, error_handler(phoenix::ref(diagnostics), _1, _2, _3, _4));
-    }
-
-    CommonRules<Iterator> common;
-
-    std::array<qi::symbols<char, OpCode>, 2>&     opcodes_flowcontrol;
-    qi::symbols<char, ConditionOpEnum>            condition_ops;
-
-    // Rule-ified symbols, which can be assigned debug names
-    qi::rule<Iterator, OpCode(),                  Skipper> opcode[2];
-    qi::rule<Iterator, ConditionOpEnum(),         Skipper> condition_op;
-
-    // Building blocks
-    qi::rule<Iterator, Expression(),              Skipper>& expression;
-    qi::rule<Iterator, std::string(),             Skipper>& identifier;
-    qi::rule<Iterator, InputSwizzlerMask(),       Skipper>& swizzle_mask;
-    qi::rule<Iterator, ConditionInput(),          Skipper>  condition_input;
-    qi::rule<Iterator, Condition(),               Skipper>  condition;
-    qi::rule<Iterator,                            Skipper>& end_of_statement;
-
-    // Compounds
-    qi::rule<Iterator, FlowControlInstruction(),  Skipper> instr[2];
-    qi::rule<Iterator, FlowControlInstruction(),  Skipper> flow_control_instruction;
-
-    // Utility
-    qi::rule<Iterator,                            Skipper> not_comma;
-    qi::rule<Iterator, bool(),                    Skipper> negation;
-
-    Diagnostics diagnostics;
-};
+}
 
 template<typename Iterator>
-struct SetEmitParser : qi::grammar<Iterator, SetEmitInstruction(), AssemblySkipper<Iterator>> {
-    using Skipper = AssemblySkipper<Iterator>;
-
-    SetEmitParser(const ParserContext& context)
+SetEmitParser<Iterator>::SetEmitParser(const ParserContext& context)
                 : SetEmitParser::base_type(setemit_instruction),
                   common(context),
                   opcodes_setemit(common.opcodes_setemit),
@@ -704,37 +487,10 @@ struct SetEmitParser : qi::grammar<Iterator, SetEmitInstruction(), AssemblySkipp
         BOOST_SPIRIT_DEBUG_NODE(setemit_instruction);
 
         qi::on_error<qi::fail>(setemit_instruction, error_handler(phoenix::ref(diagnostics), _1, _2, _3, _4));
-    }
-
-    CommonRules<Iterator> common;
-
-    qi::symbols<char, OpCode>& opcodes_setemit;
-
-    // Rule-ified symbols, which can be assigned debug names
-    qi::rule<Iterator, OpCode(),                  Skipper> opcode;
-    qi::rule<Iterator, unsigned int(),            Skipper> vertex_id;
-    qi::rule<Iterator, bool(),                    Skipper> prim_flag;
-    qi::rule<Iterator, bool(),                    Skipper> inv_flag;
-    qi::rule<Iterator, SetEmitInstruction::Flags(), Skipper> flags;
-
-    // Building blocks
-    qi::rule<Iterator,                            Skipper>& end_of_statement;
-
-    // Compounds
-    qi::rule<Iterator, SetEmitInstruction(),  Skipper> setemit_instruction;
-
-    // Utility
-    qi::rule<Iterator,                            Skipper> not_comma;
-    qi::rule<Iterator, bool(),                    Skipper> negation;
-
-    Diagnostics diagnostics;
-};
+}
 
 template<typename Iterator>
-struct LabelParser : qi::grammar<Iterator, StatementLabel(), AssemblySkipper<Iterator>> {
-    using Skipper = AssemblySkipper<Iterator>;
-
-    LabelParser(const ParserContext& context)
+LabelParser<Iterator>::LabelParser(const ParserContext& context)
                 : LabelParser::base_type(label), common(context),
                   end_of_statement(common.end_of_statement),
                   identifier(common.identifier),
@@ -745,23 +501,10 @@ struct LabelParser : qi::grammar<Iterator, StatementLabel(), AssemblySkipper<Ite
         BOOST_SPIRIT_DEBUG_NODE(label);
 
         qi::on_error<qi::fail>(label, error_handler(phoenix::ref(diagnostics), _1, _2, _3, _4));
-    }
+}
 
-    CommonRules<Iterator> common;
-
-    qi::rule<Iterator,                            Skipper>& end_of_statement;
-
-    qi::rule<Iterator, std::string(),             Skipper>& identifier;
-    qi::rule<Iterator, std::string(),             Skipper>  label;
-
-    Diagnostics diagnostics;
-};
-
-template<typename Iterator>
-struct DeclarationParser : qi::grammar<Iterator, StatementDeclaration(), AssemblySkipper<Iterator>> {
-    using Skipper = AssemblySkipper<Iterator>;
-
-    DeclarationParser(const ParserContext& context)
+template<>
+DeclarationParser<std::string::iterator>::DeclarationParser(const ParserContext& context)
                 : DeclarationParser::base_type(declaration),
                   common(context),
                   identifier(common.identifier), swizzle_mask(common.swizzle_mask),
@@ -814,30 +557,7 @@ struct DeclarationParser : qi::grammar<Iterator, StatementDeclaration(), Assembl
         BOOST_SPIRIT_DEBUG_NODE(declaration);
 
         qi::on_error<qi::fail>(declaration, error_handler(phoenix::ref(diagnostics), _1, _2, _3, _4));
-    }
-
-    CommonRules<Iterator> common;
-
-    qi::rule<Iterator, Skipper> string_as;
-    qi::rule<Iterator, std::vector<float>(), Skipper> dummy_const;
-    qi::rule<Iterator, boost::optional<OutputRegisterInfo::Type>(), Skipper> dummy_semantic;
-
-    qi::symbols<char, OutputRegisterInfo::Type>   output_semantics;
-
-    // Rule-ified symbols, which can be assigned names
-    qi::rule<Iterator, OutputRegisterInfo::Type(),Skipper> output_semantics_rule;
-
-    // Building blocks
-    qi::rule<Iterator, std::string(),                 Skipper>& identifier;
-    qi::rule<Iterator, InputSwizzlerMask(),           Skipper>& swizzle_mask;
-    qi::rule<Iterator, std::vector<float>(),          Skipper> constant;
-    qi::rule<Iterator, std::string(),                 Skipper> alias_identifier;
-    qi::rule<Iterator, StatementDeclaration::Extra(), Skipper> const_or_semantic;
-    qi::rule<Iterator,                                Skipper>& end_of_statement;
-
-    qi::rule<Iterator, StatementDeclaration(),        Skipper> declaration;
-    Diagnostics diagnostics;
-};
+}
 
 struct Parser::ParserImpl {
     using Iterator = std::string::iterator;
@@ -922,6 +642,8 @@ private:
     SetEmitParser<Iterator> setemit;
     DeclarationParser<Iterator> declaration;
 };
+
+
 
 Parser::Parser(const ParserContext& context) : impl(new ParserImpl(context)) {
 };
