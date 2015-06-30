@@ -502,6 +502,8 @@ LabelParser<Iterator>::LabelParser(const ParserContext& context)
 
         qi::on_error<qi::fail>(label, error_handler(phoenix::ref(diagnostics), _1, _2, _3, _4));
 }
+template struct LabelParser<std::string::iterator>;
+
 
 template<>
 DeclarationParser<std::string::iterator>::DeclarationParser(const ParserContext& context)
