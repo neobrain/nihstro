@@ -72,32 +72,10 @@ BOOST_FUSION_ADAPT_STRUCT(
 )
 
 BOOST_FUSION_ADAPT_STRUCT(
-    ConditionInput,
-    (bool, invert)
-    (Identifier, identifier)
-    (boost::optional<InputSwizzlerMask>, swizzler_mask)
-)
-
-BOOST_FUSION_ADAPT_STRUCT(
-    Condition,
-    (ConditionInput, input1)
-    (Instruction::FlowControlType::Op, op)
-    (ConditionInput, input2)
-)
-
-BOOST_FUSION_ADAPT_STRUCT(
     CompareInstruction,
     (OpCode, opcode)
     (std::vector<Expression>, arguments)
     (std::vector<Instruction::Common::CompareOpType::Op>, ops)
-)
-
-BOOST_FUSION_ADAPT_STRUCT(
-    FlowControlInstruction,
-    (OpCode, opcode)
-    (std::string, target_label)
-    (boost::optional<std::string>, return_label)
-    (boost::optional<Condition>, condition)
 )
 
 BOOST_FUSION_ADAPT_STRUCT(
@@ -112,15 +90,6 @@ BOOST_FUSION_ADAPT_STRUCT(
     (unsigned, vertex_id)
     (SetEmitInstruction::Flags, flags)
 )
-
-// Manually define a swap() overload for qi::hold to work.
-namespace boost {
-namespace spirit {
-void swap(nihstro::Condition& a, nihstro::Condition& b) {
-    boost::fusion::swap(a, b);
-}
-}
-}
 
 phoenix::function<ErrorHandler> error_handler;
 
@@ -314,69 +283,6 @@ CompareParser<Iterator>::CompareParser(const ParserContext& context)
         BOOST_SPIRIT_DEBUG_NODE(instruction);
 
         qi::on_error<qi::fail>(instruction, error_handler(phoenix::ref(diagnostics), _1, _2, _3, _4));
-}
-
-template<typename Iterator>
-FlowControlParser<Iterator>::FlowControlParser(const ParserContext& context)
-                : FlowControlParser::base_type(flow_control_instruction),
-                  common(context),
-                  opcodes_flowcontrol(common.opcodes_flowcontrol),
-                  expression(common.expression),
-                  identifier(common.identifier),
-                  swizzle_mask(common.swizzle_mask),
-                  end_of_statement(common.end_of_statement),
-                  diagnostics(common.diagnostics) {
-
-        condition_ops.add
-                   ( "&&",    ConditionOp::And     )
-                   ( "||",    ConditionOp::Or      );
-
-        // Setup rules
-
-        auto blank_rule = qi::omit[ascii::blank];
-        auto label_rule = identifier.alias();
-
-        opcode[0] = qi::lexeme[qi::no_case[opcodes_flowcontrol[0]] >> &ascii::space];
-        opcode[1] = qi::lexeme[qi::no_case[opcodes_flowcontrol[1]] >> &ascii::space];
-
-        condition_op = qi::lexeme[condition_ops];
-
-        negation = qi::matches[qi::lit("!")];
-
-        condition_input = negation >> identifier >> -(qi::lit('.') > swizzle_mask);
-
-        // May be a condition involving the conditional codes, or a reference to a uniform
-        // TODO: Make sure we use qi::hold wherever necessary
-        condition = qi::hold[condition_input >> condition_op >> condition_input]
-                    | (condition_input >> qi::attr(ConditionOp::JustX) >> qi::attr(ConditionInput{}));
-
-        // if condition
-        instr[0] = opcode[0]
-                   >> qi::attr("__dummy")  // Dummy label (set indirectly using else,endif, or endloop pseudo-instructions)
-                   >> qi::attr(boost::optional<std::string>()) // Dummy return label
-                   >> condition;
-
-        // call target_label until return_label if condition
-        instr[1] = opcode[1]
-                   >> label_rule
-                   >> -(qi::no_skip[(blank_rule >> qi::lit("until")) > blank_rule] >> label_rule)
-                   >> -(qi::no_skip[(blank_rule >> qi::lit("if")) > blank_rule] >> condition);
-
-        flow_control_instruction %= (instr[0] | instr[1]) > end_of_statement;
-
-        // Error handling
-        BOOST_SPIRIT_DEBUG_NODE(opcode[0]);
-        BOOST_SPIRIT_DEBUG_NODE(opcode[1]);
-        BOOST_SPIRIT_DEBUG_NODE(negation);
-        BOOST_SPIRIT_DEBUG_NODE(condition_op);
-        BOOST_SPIRIT_DEBUG_NODE(condition_input);
-        BOOST_SPIRIT_DEBUG_NODE(condition);
-
-        BOOST_SPIRIT_DEBUG_NODE(instr[0]);
-        BOOST_SPIRIT_DEBUG_NODE(instr[1]);
-        BOOST_SPIRIT_DEBUG_NODE(flow_control_instruction);
-
-        qi::on_error<qi::fail>(flow_control_instruction, error_handler(phoenix::ref(diagnostics), _1, _2, _3, _4));
 }
 
 template<typename Iterator>
