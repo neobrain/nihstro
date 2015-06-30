@@ -45,25 +45,6 @@ using namespace nihstro;
 // Adapt parser data structures for use with boost::spirit
 
 BOOST_FUSION_ADAPT_STRUCT(
-    IntegerWithSign,
-    (int, sign)
-    (unsigned, value)
-)
-
-BOOST_FUSION_ADAPT_STRUCT(
-    Expression::SignedIdentifier,
-    (boost::optional<Sign>, sign)
-    (Identifier, identifier)
-)
-
-BOOST_FUSION_ADAPT_STRUCT(
-    Expression,
-    (Expression::SignedIdentifier, signed_identifier)
-    (boost::optional<IndexExpression>, index)
-    (std::vector<InputSwizzlerMask>, swizzle_masks)
-)
-
-BOOST_FUSION_ADAPT_STRUCT(
     ConditionInput,
     (bool, invert)
     (Identifier, identifier)

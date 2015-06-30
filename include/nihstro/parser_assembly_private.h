@@ -50,14 +50,20 @@ using spirit::_4;
 
 using namespace nihstro;
 
-// Manually define a swap() overload for qi::hold to work.
-/*namespace boost {
-namespace spirit {
-void swap(nihstro::Condition& a, nihstro::Condition& b) {
-    boost::fusion::swap(a, b);
-}
-}
-}*/
+// Adapt common parser data structures for use with boost::spirit
+
+BOOST_FUSION_ADAPT_STRUCT(
+    Expression::SignedIdentifier,
+    (boost::optional<Sign>, sign)
+    (Identifier, identifier)
+)
+
+BOOST_FUSION_ADAPT_STRUCT(
+    Expression,
+    (Expression::SignedIdentifier, signed_identifier)
+    (boost::optional<IndexExpression>, index)
+    (std::vector<InputSwizzlerMask>, swizzle_masks)
+)
 
 class Diagnostics
 {

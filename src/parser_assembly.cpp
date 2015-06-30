@@ -53,32 +53,6 @@ using namespace nihstro;
 // Adapt parser data structures for use with boost::spirit
 
 BOOST_FUSION_ADAPT_STRUCT(
-    IntegerWithSign,
-    (int, sign)
-    (unsigned, value)
-)
-
-BOOST_FUSION_ADAPT_STRUCT(
-    Expression::SignedIdentifier,
-    (boost::optional<Sign>, sign)
-    (Identifier, identifier)
-)
-
-BOOST_FUSION_ADAPT_STRUCT(
-    Expression,
-    (Expression::SignedIdentifier, signed_identifier)
-    (boost::optional<IndexExpression>, index)
-    (std::vector<InputSwizzlerMask>, swizzle_masks)
-)
-
-BOOST_FUSION_ADAPT_STRUCT(
-    CompareInstruction,
-    (OpCode, opcode)
-    (std::vector<Expression>, arguments)
-    (std::vector<Instruction::Common::CompareOpType::Op>, ops)
-)
-
-BOOST_FUSION_ADAPT_STRUCT(
     SetEmitInstruction::Flags,
     (boost::optional<bool>, primitive_flag)
     (boost::optional<bool>, invert_flag)
@@ -92,129 +66,6 @@ BOOST_FUSION_ADAPT_STRUCT(
 )
 
 phoenix::function<ErrorHandler> error_handler;
-
-/**
- * Implementation of transform_attribute from std::vector<InputSwizzlerMask::Component> to InputSwizzlerMask.
- * This eases swizzle mask parsing a lot.
- */
-namespace boost { namespace spirit { namespace traits {
-template<>
-struct transform_attribute<InputSwizzlerMask, std::vector<InputSwizzlerMask::Component>, qi::domain>
-{
-    using Exposed = InputSwizzlerMask;
-
-    using type = std::vector<InputSwizzlerMask::Component>;
-
-    static void post(Exposed& val, const type& attr) {
-        val.num_components = attr.size();
-        for (size_t i = 0; i < attr.size(); ++i)
-            val.components[i] = attr[i];
-    }
-
-    static type pre(Exposed& val) {
-        type vec;
-        for (int i = 0; i < val.num_components; ++i)
-            vec.push_back(val.components[i]);
-        return vec;
-    }
-
-    static void fail(Exposed&) { }
-};
-}}} // namespaces
-
-template<typename Iterator>
-CommonRules<Iterator>::CommonRules(const ParserContext& context) {
-    // Setup symbol table
-    opcodes_trivial.add
-               ( "nop",      OpCode::Id::NOP      )
-               ( "end",      OpCode::Id::END      )
-               ( "emit",     OpCode::Id::EMIT     )
-               ( "else",     OpCode::Id::ELSE     )
-               ( "endif",    OpCode::Id::ENDIF    )
-               ( "endloop",  OpCode::Id::ENDLOOP  );
-
-    opcodes_float[0].add
-               ( "mova",     OpCode::Id::MOVA     );
-
-    opcodes_float[1].add
-               ( "exp",      OpCode::Id::EX2      )
-               ( "log",      OpCode::Id::LG2      )
-               ( "flr",      OpCode::Id::FLR      )
-               ( "rcp",      OpCode::Id::RCP      )
-               ( "rsq",      OpCode::Id::RSQ      )
-               ( "mov",      OpCode::Id::MOV      );
-    opcodes_float[2].add
-               ( "add",      OpCode::Id::ADD      )
-               ( "dp3",      OpCode::Id::DP3      )
-               ( "dp4",      OpCode::Id::DP4      )
-               ( "dph",      OpCode::Id::DPH      )
-               ( "mul",      OpCode::Id::MUL      )
-               ( "sge",      OpCode::Id::SGE      )
-               ( "slt",      OpCode::Id::SLT      )
-               ( "max",      OpCode::Id::MAX      )
-               ( "min",      OpCode::Id::MIN      );
-    opcodes_float[3].add
-               ( "mad",      OpCode::Id::MAD      );
-
-    opcodes_compare.add
-               ( "cmp",      OpCode::Id::CMP      );
-
-    opcodes_flowcontrol[0].add
-               ( "break",    OpCode::Id::BREAKC   )
-               ( "if",       OpCode::Id::GEN_IF   )
-               ( "loop",     OpCode::Id::LOOP     );
-    opcodes_flowcontrol[1].add
-               ( "jmp",      OpCode::Id::GEN_JMP  )
-               ( "call",     OpCode::Id::GEN_CALL );
-
-    opcodes_setemit.add
-               ( "setemitraw", OpCode::Id::SETEMIT );
-
-        signs.add( "+", +1)
-                 ( "-", -1);
-
-        // TODO: Add rgba/stq masks
-        swizzlers.add
-                     ( "x",    InputSwizzlerMask::x )
-                     ( "y",    InputSwizzlerMask::y )
-                     ( "z",    InputSwizzlerMask::z )
-                     ( "w",    InputSwizzlerMask::w );
-
-        // TODO: Make sure this is followed by a space or *some* separator
-        // TODO: Use qi::repeat(1,4)(swizzlers) instead of Kleene [failed to work when I tried, so make this work!]
-        // TODO: Use qi::lexeme[swizzlers] [crashed when I tried, so make this work!]
-        swizzle_mask = qi::attr_cast<InputSwizzlerMask, std::vector<InputSwizzlerMask::Component>>(*swizzlers);
-
-        identifier = qi::lexeme[qi::char_("a-zA-Z_") >> *qi::char_("a-zA-Z0-9_")];
-        peek_identifier = &identifier;
-
-        uint_after_sign = qi::uint_; // TODO: NOT dot (or alphanum) after this to prevent floats..., TODO: overflows?
-        sign_with_uint = signs > uint_after_sign;
-        index_expression_first_term = (qi::attr(+1) >> qi::uint_) | (peek_identifier > identifier);
-        index_expression_following_terms = (qi::lit('+') >> peek_identifier > identifier) | sign_with_uint;
-        index_expression = (-index_expression_first_term)           // the first element has an optional sign
-                            >> (*index_expression_following_terms); // following elements have a mandatory sign
-
-        expression = ((-signs) > peek_identifier > identifier) >> (-(qi::lit('[') > index_expression > qi::lit(']'))) >> *(qi::lit('.') > swizzle_mask);
-
-        end_of_statement = qi::omit[qi::eol | qi::eoi];
-
-        // Error handling
-        BOOST_SPIRIT_DEBUG_NODE(identifier);
-        BOOST_SPIRIT_DEBUG_NODE(uint_after_sign);
-        BOOST_SPIRIT_DEBUG_NODE(index_expression);
-        BOOST_SPIRIT_DEBUG_NODE(peek_identifier);
-        BOOST_SPIRIT_DEBUG_NODE(expression);
-        BOOST_SPIRIT_DEBUG_NODE(swizzle_mask);
-        BOOST_SPIRIT_DEBUG_NODE(end_of_statement);
-
-        diagnostics.Add(swizzle_mask.name(), "Expected swizzle mask after period");
-        diagnostics.Add(peek_identifier.name(), "Expected identifier");
-        diagnostics.Add(uint_after_sign.name(), "Expected integer number after sign");
-        diagnostics.Add(index_expression.name(), "Expected index expression between '[' and ']'");
-        diagnostics.Add(expression.name(), "Expected expression of a known identifier");
-        diagnostics.Add(end_of_statement.name(), "Expected end of statement");
-}
 
 template<typename Iterator, bool require_end_of_line>
 TrivialOpParser<Iterator, require_end_of_line>::TrivialOpParser(const ParserContext& context)
@@ -243,46 +94,6 @@ TrivialOpParser<Iterator, require_end_of_line>::TrivialOpParser(const ParserCont
         BOOST_SPIRIT_DEBUG_NODE(trivial_instruction);
 
         qi::on_error<qi::fail>(trivial_instruction, error_handler(phoenix::ref(diagnostics), _1, _2, _3, _4));
-}
-
-template<typename Iterator>
-CompareParser<Iterator>::CompareParser(const ParserContext& context)
-                : CompareParser::base_type(instruction),
-                  common(context),
-                  opcodes_compare(common.opcodes_compare),
-                  expression(common.expression),
-                  end_of_statement(common.end_of_statement),
-                  diagnostics(common.diagnostics) {
-
-        // TODO: Will this properly match >= ?
-        compare_ops.add
-                       ( "==", CompareOp::Equal )
-                       ( "!=", CompareOp::NotEqual )
-                       ( "<", CompareOp::LessThan )
-                       ( "<=", CompareOp::LessEqual )
-                       ( ">", CompareOp::GreaterThan )
-                       ( ">=", CompareOp::GreaterEqual );
-
-        // Setup rules
-
-        auto comma_rule = qi::lit(',');
-
-        opcode = qi::no_case[qi::lexeme[opcodes_compare >> &ascii::space]];
-        compare_op = qi::lexeme[compare_ops];
-
-        // cmp src1, src2, op1, op2
-        // TODO: Also allow "cmp src1 op1 src2, src1 op2 src2"
-        two_ops = compare_op > comma_rule > compare_op;
-        two_expressions = expression > comma_rule > expression;
-        instr[0] = opcode > two_expressions > comma_rule > two_ops;
-
-        instruction = instr[0] > end_of_statement;
-
-        // Error handling
-        BOOST_SPIRIT_DEBUG_NODE(instr[0]);
-        BOOST_SPIRIT_DEBUG_NODE(instruction);
-
-        qi::on_error<qi::fail>(instruction, error_handler(phoenix::ref(diagnostics), _1, _2, _3, _4));
 }
 
 template<typename Iterator>

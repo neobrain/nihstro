@@ -52,65 +52,55 @@ using namespace nihstro;
 
 // Adapt parser data structures for use with boost::spirit
 
+/*BOOST_FUSION_ADAPT_STRUCT(
+    IntegerWithSign,
+    (int, sign)
+    (unsigned, value)
+)
+*/
 BOOST_FUSION_ADAPT_STRUCT(
-    StatementInstruction,
+    CompareInstruction,
     (OpCode, opcode)
-    (std::vector<Expression>, expressions)
+    (std::vector<Expression>, arguments)
+    (std::vector<Instruction::Common::CompareOpType::Op>, ops)
 )
 
 template<>
-FloatOpParser<std::string::iterator>::FloatOpParser(const ParserContext& context)
-                : FloatOpParser::base_type(float_instruction),
+CompareParser<std::string::iterator>::CompareParser(const ParserContext& context)
+                : CompareParser::base_type(instruction),
                   common(context),
-                  opcodes_float(common.opcodes_float),
+                  opcodes_compare(common.opcodes_compare),
                   expression(common.expression),
                   end_of_statement(common.end_of_statement),
                   diagnostics(common.diagnostics) {
+
+        // TODO: Will this properly match >= ?
+        compare_ops.add
+                       ( "==", CompareOp::Equal )
+                       ( "!=", CompareOp::NotEqual )
+                       ( "<", CompareOp::LessThan )
+                       ( "<=", CompareOp::LessEqual )
+                       ( ">", CompareOp::GreaterThan )
+                       ( ">=", CompareOp::GreaterEqual );
 
         // Setup rules
 
         auto comma_rule = qi::lit(',');
 
-        for (int i = 0; i < 4; ++i) {
-            // Make sure that a mnemonic is always followed by a space (such that e.g. "addbla" fails to match)
-            opcode[i] = qi::no_case[qi::lexeme[opcodes_float[i] >> &ascii::space]];
-        }
+        opcode = qi::no_case[qi::lexeme[opcodes_compare >> &ascii::space]];
+        compare_op = qi::lexeme[compare_ops];
 
-        // chain of arguments for each group of opcodes
-        expression_chain[0] = expression;
-        for (int i = 1; i < 4; ++i) {
-            expression_chain[i] = expression_chain[i - 1] >> comma_rule > expression;
-        }
+        // cmp src1, src2, op1, op2
+        // TODO: Also allow "cmp src1 op1 src2, src1 op2 src2"
+        two_ops = compare_op > comma_rule > compare_op;
+        two_expressions = expression > comma_rule > expression;
+        instr[0] = opcode > two_expressions > comma_rule > two_ops;
 
-        // e.g. "add o1, t2, t5"
-        float_instr[0] = opcode[0] > expression_chain[0];
-        float_instr[1] = opcode[1] > expression_chain[1];
-        float_instr[2] = opcode[2] > expression_chain[2];
-        float_instr[3] = opcode[3] > expression_chain[3];
-
-        float_instruction %= (float_instr[0] | float_instr[1] | float_instr[2] | float_instr[3]) > end_of_statement;
+        instruction = instr[0] > end_of_statement;
 
         // Error handling
-        BOOST_SPIRIT_DEBUG_NODE(opcode[0]);
-        BOOST_SPIRIT_DEBUG_NODE(opcode[1]);
-        BOOST_SPIRIT_DEBUG_NODE(opcode[2]);
-        BOOST_SPIRIT_DEBUG_NODE(opcode[3]);
+        BOOST_SPIRIT_DEBUG_NODE(instr[0]);
+        BOOST_SPIRIT_DEBUG_NODE(instruction);
 
-        BOOST_SPIRIT_DEBUG_NODE(expression_chain[0]);
-        BOOST_SPIRIT_DEBUG_NODE(expression_chain[1]);
-        BOOST_SPIRIT_DEBUG_NODE(expression_chain[2]);
-        BOOST_SPIRIT_DEBUG_NODE(expression_chain[3]);
-
-        BOOST_SPIRIT_DEBUG_NODE(float_instr[0]);
-        BOOST_SPIRIT_DEBUG_NODE(float_instr[1]);
-        BOOST_SPIRIT_DEBUG_NODE(float_instr[2]);
-        BOOST_SPIRIT_DEBUG_NODE(float_instr[3]);
-        BOOST_SPIRIT_DEBUG_NODE(float_instruction);
-
-        diagnostics.Add(expression_chain[0].name(), "one argument");
-        diagnostics.Add(expression_chain[1].name(), "two arguments");
-        diagnostics.Add(expression_chain[2].name(), "three arguments");
-        diagnostics.Add(expression_chain[3].name(), "four arguments");
-
-        qi::on_error<qi::fail>(float_instruction, error_handler(phoenix::ref(diagnostics), _1, _2, _3, _4));
+        qi::on_error<qi::fail>(instruction, error_handler(phoenix::ref(diagnostics), _1, _2, _3, _4));
 }
