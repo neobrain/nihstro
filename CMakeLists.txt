@@ -17,13 +17,13 @@ install(TARGETS nihstro-disassemble DESTINATION bin)
 # TODO: What if program_options was found but not unit_test_framework?
 if(Boost_FOUND)
     include_directories(${Boost_INCLUDE_DIRS})
-    add_executable(nihstro-assemble src/assembler.cpp src/parser_assembly.cpp)
+    add_executable(nihstro-assemble src/assembler.cpp src/parser_assembly.cpp src/parser_assembly/declaration.cpp src/parser_assembly/floatop.cpp)
     target_link_libraries(nihstro-assemble ${Boost_PROGRAM_OPTIONS_LIBRARY})
     install(TARGETS nihstro-assemble DESTINATION bin)
 
     # tests
     if(Boost_UNIT_TEST_FRAMEWORK_FOUND)
-        add_executable(test-parser src/tests/parser.cpp src/parser_assembly.cpp)
+        add_executable(test-parser src/tests/parser.cpp src/parser_assembly.cpp src/parser_assembly/declaration.cpp src/parser_assembly/floatop.cpp)
         target_compile_definitions(test-parser PUBLIC -DBOOST_TEST_DYN_LINK -DBOOST_TEST_MAIN)
         target_link_libraries(test-parser ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY})
         enable_testing()
