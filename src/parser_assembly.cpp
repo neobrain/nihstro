@@ -86,12 +86,6 @@ BOOST_FUSION_ADAPT_STRUCT(
 )
 
 BOOST_FUSION_ADAPT_STRUCT(
-    StatementInstruction,
-    (OpCode, opcode)
-    (std::vector<Expression>, expressions)
-)
-
-BOOST_FUSION_ADAPT_STRUCT(
     CompareInstruction,
     (OpCode, opcode)
     (std::vector<Expression>, arguments)
@@ -117,21 +111,6 @@ BOOST_FUSION_ADAPT_STRUCT(
     (OpCode, opcode)
     (unsigned, vertex_id)
     (SetEmitInstruction::Flags, flags)
-)
-
-BOOST_FUSION_ADAPT_STRUCT(
-    StatementDeclaration::Extra,
-    (std::vector<float>, constant_value)
-    (boost::optional<OutputRegisterInfo::Type>, output_semantic)
-)
-
-BOOST_FUSION_ADAPT_STRUCT(
-    StatementDeclaration,
-    (std::string, alias_name)
-    (Identifier, identifier_start)
-    (boost::optional<Identifier>, identifier_end)
-    (boost::optional<InputSwizzlerMask>, swizzle_mask)
-    (StatementDeclaration::Extra, extra)
 )
 
 // Manually define a swap() overload for qi::hold to work.
@@ -241,7 +220,7 @@ CommonRules<Iterator>::CommonRules(const ParserContext& context) {
         peek_identifier = &identifier;
 
         uint_after_sign = qi::uint_; // TODO: NOT dot (or alphanum) after this to prevent floats..., TODO: overflows?
-        auto sign_with_uint = signs > uint_after_sign;
+        sign_with_uint = signs > uint_after_sign;
         index_expression_first_term = (qi::attr(+1) >> qi::uint_) | (peek_identifier > identifier);
         index_expression_following_terms = (qi::lit('+') >> peek_identifier > identifier) | sign_with_uint;
         index_expression = (-index_expression_first_term)           // the first element has an optional sign
@@ -295,63 +274,6 @@ TrivialOpParser<Iterator, require_end_of_line>::TrivialOpParser(const ParserCont
         BOOST_SPIRIT_DEBUG_NODE(trivial_instruction);
 
         qi::on_error<qi::fail>(trivial_instruction, error_handler(phoenix::ref(diagnostics), _1, _2, _3, _4));
-}
-
-template<>
-FloatOpParser<std::string::iterator>::FloatOpParser(const ParserContext& context)
-                : FloatOpParser::base_type(float_instruction),
-                  common(context),
-                  opcodes_float(common.opcodes_float),
-                  expression(common.expression),
-                  end_of_statement(common.end_of_statement),
-                  diagnostics(common.diagnostics) {
-
-        // Setup rules
-
-        auto comma_rule = qi::lit(',');
-
-        for (int i = 0; i < 4; ++i) {
-            // Make sure that a mnemonic is always followed by a space (such that e.g. "addbla" fails to match)
-            opcode[i] = qi::no_case[qi::lexeme[opcodes_float[i] >> &ascii::space]];
-        }
-
-        // chain of arguments for each group of opcodes
-        expression_chain[0] = expression;
-        for (int i = 1; i < 4; ++i) {
-            expression_chain[i] = expression_chain[i - 1] >> comma_rule > expression;
-        }
-
-        // e.g. "add o1, t2, t5"
-        float_instr[0] = opcode[0] > expression_chain[0];
-        float_instr[1] = opcode[1] > expression_chain[1];
-        float_instr[2] = opcode[2] > expression_chain[2];
-        float_instr[3] = opcode[3] > expression_chain[3];
-
-        float_instruction %= (float_instr[0] | float_instr[1] | float_instr[2] | float_instr[3]) > end_of_statement;
-
-        // Error handling
-        BOOST_SPIRIT_DEBUG_NODE(opcode[0]);
-        BOOST_SPIRIT_DEBUG_NODE(opcode[1]);
-        BOOST_SPIRIT_DEBUG_NODE(opcode[2]);
-        BOOST_SPIRIT_DEBUG_NODE(opcode[3]);
-
-        BOOST_SPIRIT_DEBUG_NODE(expression_chain[0]);
-        BOOST_SPIRIT_DEBUG_NODE(expression_chain[1]);
-        BOOST_SPIRIT_DEBUG_NODE(expression_chain[2]);
-        BOOST_SPIRIT_DEBUG_NODE(expression_chain[3]);
-
-        BOOST_SPIRIT_DEBUG_NODE(float_instr[0]);
-        BOOST_SPIRIT_DEBUG_NODE(float_instr[1]);
-        BOOST_SPIRIT_DEBUG_NODE(float_instr[2]);
-        BOOST_SPIRIT_DEBUG_NODE(float_instr[3]);
-        BOOST_SPIRIT_DEBUG_NODE(float_instruction);
-
-        diagnostics.Add(expression_chain[0].name(), "one argument");
-        diagnostics.Add(expression_chain[1].name(), "two arguments");
-        diagnostics.Add(expression_chain[2].name(), "three arguments");
-        diagnostics.Add(expression_chain[3].name(), "four arguments");
-
-        qi::on_error<qi::fail>(float_instruction, error_handler(phoenix::ref(diagnostics), _1, _2, _3, _4));
 }
 
 template<typename Iterator>
@@ -504,62 +426,6 @@ LabelParser<Iterator>::LabelParser(const ParserContext& context)
 }
 template struct LabelParser<std::string::iterator>;
 
-
-template<>
-DeclarationParser<std::string::iterator>::DeclarationParser(const ParserContext& context)
-                : DeclarationParser::base_type(declaration),
-                  common(context),
-                  identifier(common.identifier), swizzle_mask(common.swizzle_mask),
-                  end_of_statement(common.end_of_statement),
-                  diagnostics(common.diagnostics) {
-
-        // Setup symbol table
-        output_semantics.add("position", OutputRegisterInfo::POSITION);
-        output_semantics.add("quaternion", OutputRegisterInfo::QUATERNION);
-        output_semantics.add("color", OutputRegisterInfo::COLOR);
-        output_semantics.add("texcoord0", OutputRegisterInfo::TEXCOORD0);
-        output_semantics.add("texcoord1", OutputRegisterInfo::TEXCOORD1);
-        output_semantics.add("texcoord2", OutputRegisterInfo::TEXCOORD2);
-        output_semantics.add("view", OutputRegisterInfo::VIEW);
-        output_semantics_rule = qi::lexeme[output_semantics];
-
-        // Setup rules
-
-        alias_identifier = qi::omit[qi::lexeme["alias" >> ascii::blank]] > identifier;
-
-        // e.g. 5.4 or (1.1, 2, 3)
-        constant = (qi::repeat(1)[qi::float_]
-                                  | (qi::lit('(') > (qi::float_ % qi::lit(',')) > qi::lit(')')));
-
-        dummy_const = qi::attr(std::vector<float>());
-        dummy_semantic = qi::attr(boost::optional<OutputRegisterInfo::Type>());
-
-        // match a constant or a semantic, and fill the respective other one with a dummy
-        const_or_semantic = (dummy_const >> output_semantics_rule) | (constant >> dummy_semantic);
-
-        // TODO: Would like to use +ascii::blank instead, but somehow that fails to parse lines like ".alias name o2.xy texcoord0" correctly
-        string_as = qi::omit[qi::no_skip[*/*+*/ascii::blank >> qi::lit("as") >> +ascii::blank]];
-
-        declaration = ((qi::lit('.') > alias_identifier) >> identifier >> -(qi::lit('-') > identifier) >> -(qi::lit('.') > swizzle_mask))
-                       >> (
-                            (string_as > const_or_semantic)
-                            | (dummy_const >> dummy_semantic)
-                          )
-                       > end_of_statement;
-
-        // Error handling
-        output_semantics_rule.name("output semantic after \"as\"");
-        alias_identifier.name("known preprocessor directive (i.e. alias).");
-        const_or_semantic.name("constant or semantic after \"as\"");
-
-        BOOST_SPIRIT_DEBUG_NODE(output_semantics_rule);
-        BOOST_SPIRIT_DEBUG_NODE(constant);
-        BOOST_SPIRIT_DEBUG_NODE(alias_identifier);
-        BOOST_SPIRIT_DEBUG_NODE(const_or_semantic);
-        BOOST_SPIRIT_DEBUG_NODE(declaration);
-
-        qi::on_error<qi::fail>(declaration, error_handler(phoenix::ref(diagnostics), _1, _2, _3, _4));
-}
 
 struct Parser::ParserImpl {
     using Iterator = std::string::iterator;

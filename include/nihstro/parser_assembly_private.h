@@ -167,6 +167,7 @@ private:
     // Empty rule
     qi::rule<Iterator,                            Skipper> opening_bracket;
     qi::rule<Iterator,                            Skipper> closing_bracket;
+    qi::rule<Iterator, IntegerWithSign(),         Skipper> sign_with_uint;
     qi::rule<Iterator, unsigned int(),            Skipper> uint_after_sign;
 };
 

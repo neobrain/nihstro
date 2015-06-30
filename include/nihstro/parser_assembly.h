@@ -28,9 +28,10 @@
 #pragma once
 
 #include <array>
+#include <cstdint>
+#include <memory>
 #include <vector>
 #include <ostream>
-#include <cstdint>
 
 #include <boost/optional.hpp>
 #include <boost/variant.hpp>
@@ -116,6 +117,7 @@ struct IndexExpression : std::vector<boost::variant<IntegerWithSign, Identifier>
         return boost::get<Identifier>((*this)[arg]);
     }
 };
+
 
 struct Expression {
     struct SignedIdentifier {
@@ -217,6 +219,9 @@ struct StatementInstruction {
 
     // TODO: Obsolete constructor?
     StatementInstruction(const OpCode& opcode) : opcode(opcode) {
+    }
+
+    StatementInstruction(const OpCode& opcode, const std::vector<Expression> expressions) : opcode(opcode), expressions(expressions) {
     }
 
     const OpCode& GetOpCode() const {
