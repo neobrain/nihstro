@@ -738,9 +738,6 @@ union SwizzlePattern {
     }
 
     bool DestComponentEnabled(unsigned int i) const {
-        if (i >= 4)
-            throw std::out_of_range("index needs to be smaller than 4");
-
         return (dest_mask & (0x8 >> i));
     }
 
