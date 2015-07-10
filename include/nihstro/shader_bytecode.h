@@ -378,8 +378,7 @@ struct OpCode {
     }
 
     const Info& GetInfo() const {
-        static const OpCode::Info unknown_instruction = { OpCode::Type::Unknown, 0, "UNK" };
-        static const OpCode::Info dummy = { OpCode::Type::Unknown, 0, "DMY" };
+        #define unknown_instruction { OpCode::Type::Unknown, 0, "UNK" }
         static const OpCode::Info info_table[] =  {
             { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments, "add" },
             { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments, "dp3" },
@@ -428,18 +427,26 @@ struct OpCode {
             { OpCode::Type::Conditional, OpCode::Info::JMPC, "jmpc" },
             { OpCode::Type::Conditional, OpCode::Info::JMPU, "jmpu" },
             { OpCode::Type::Arithmetic, OpCode::Info::Compare, "cmp" },
-            dummy,
+            { OpCode::Type::Arithmetic, OpCode::Info::Compare, "cmp" },
             { OpCode::Type::MultiplyAdd, OpCode::Info::SrcInversed, "madi" },
-            dummy,
-            dummy,
-            dummy,
-            dummy,
-            dummy,
-            dummy,
-            dummy,
+            { OpCode::Type::MultiplyAdd, OpCode::Info::SrcInversed, "madi" },
+            { OpCode::Type::MultiplyAdd, OpCode::Info::SrcInversed, "madi" },
+            { OpCode::Type::MultiplyAdd, OpCode::Info::SrcInversed, "madi" },
+            { OpCode::Type::MultiplyAdd, OpCode::Info::SrcInversed, "madi" },
+            { OpCode::Type::MultiplyAdd, OpCode::Info::SrcInversed, "madi" },
+            { OpCode::Type::MultiplyAdd, OpCode::Info::SrcInversed, "madi" },
+            { OpCode::Type::MultiplyAdd, OpCode::Info::SrcInversed, "madi" },
+            { OpCode::Type::MultiplyAdd, 0, "mad" },
+            { OpCode::Type::MultiplyAdd, 0, "mad" },
+            { OpCode::Type::MultiplyAdd, 0, "mad" },
+            { OpCode::Type::MultiplyAdd, 0, "mad" },
+            { OpCode::Type::MultiplyAdd, 0, "mad" },
+            { OpCode::Type::MultiplyAdd, 0, "mad" },
+            { OpCode::Type::MultiplyAdd, 0, "mad" },
             { OpCode::Type::MultiplyAdd, 0, "mad" }
         };
-        return info_table[(int)EffectiveOpCode()];
+        #undef unknown_instruction
+        return info_table[value];
     }
 
     operator Id() const {
