@@ -7,7 +7,7 @@
 
 namespace nihstro {
 
-uint32_t to_float24(float val) {
+inline uint32_t to_float24(float val) {
     static_assert(std::numeric_limits<float>::is_iec559, "Compiler does not adhere to IEEE 754");
 
     union Float32 {
