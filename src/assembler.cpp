@@ -1188,16 +1188,35 @@ int main(int argc, char* argv[])
                 if (has_swizzle_mask)
                     throw "May not specify a swizzle mask when declaring constants";
 
-                if (ret.GetType() != RegisterType::FloatUniform)
-                    throw "Assigning constants to non-float uniforms is currently unsupported";
 
-                if (values.size() != 4) {
+                if (values.size() != 4 && (ret.GetType() != RegisterType::BoolUniform)) {
                     std::stringstream ss;
-                    ss <<"Must specify all register components when assigning constants (expected 4, got " << values.size() << ")";
+                    ss << "Must specify all register components when assigning constants (expected 4, got " << values.size() << ")";
                     throw ss.str();
                 }
 
-                // TODO: Support non-float constants
+                if (values.size() != 1 && (ret.GetType() == RegisterType::BoolUniform)) {
+                    std::stringstream ss;
+                    ss << "Must specify a single register component when assigning constants to boolean uniforms (expected 1, got " << values.size() << ")";
+                    throw ss.str();
+                }
+
+                if (ret.GetType() == RegisterType::IntUniform) {
+                    for (int i = 0; i < 4; ++i) {
+                        int32_t int_value = (int32_t)values[i];
+                        // TODO: Should negative values be accepted to use LOOP with decreasing counter?
+                        if (int_value < 0 || int_value > 255) {
+                            throw "Integer constants must lie within the range [0, 255]";
+                        }
+                    }
+                }
+
+                if (ret.GetType() == RegisterType::BoolUniform) {
+                    int32_t bool_value = (int32_t)values[0];
+                    if (bool_value < 0 || bool_value > 1) {
+                        throw "Boolean constants must be either 0 or 1";
+                    }
+                }
 
                 ConstantInfo constant;
                 constant.full_first_word = 0;
@@ -1205,13 +1224,36 @@ int main(int argc, char* argv[])
                 constant.value_hex[1] = 0;
                 constant.value_hex[2] = 0;
                 constant.value_hex[3] = 0;
-                constant.type = ConstantInfo::Float;
                 constant.regid = LookupIdentifier(id).GetIndex();
 
-                constant.f.x = to_float24(values[0]);
-                constant.f.y = to_float24(values[1]);
-                constant.f.z = to_float24(values[2]);
-                constant.f.w = to_float24(values[3]);
+                switch (ret.GetType()) {
+                    case RegisterType::FloatUniform:
+                    {
+                        constant.type = ConstantInfo::Float;
+                        constant.f.x = to_float24(values[0]);
+                        constant.f.y = to_float24(values[1]);
+                        constant.f.z = to_float24(values[2]);
+                        constant.f.w = to_float24(values[3]);
+                        break;
+                    }
+
+                    case RegisterType::IntUniform:
+                    {
+                        constant.type = ConstantInfo::Int;
+                        constant.i.x = (uint8_t)values[0];
+                        constant.i.y = (uint8_t)values[1];
+                        constant.i.z = (uint8_t)values[2];
+                        constant.i.w = (uint8_t)values[3];
+                        break;
+                    }
+
+                    case RegisterType::BoolUniform:
+                    {
+                        constant.type = ConstantInfo::Bool;
+                        constant.b = (uint32_t)values[0] != 0;
+                        break;
+                    }
+                }
 
                 constant_table.push_back(constant);
 
