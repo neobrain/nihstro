@@ -34,6 +34,7 @@
 #include <boost/spirit/include/qi.hpp>
 
 #include "nihstro/parser_assembly.h"
+#include "nihstro/source_tree.h"
 
 #include "nihstro/shader_binary.h"
 #include "nihstro/shader_bytecode.h"
@@ -371,3 +372,5 @@ struct DeclarationParser : qi::grammar<Iterator, StatementDeclaration(), Assembl
     qi::rule<Iterator, StatementDeclaration(),        Skipper> declaration;
     Diagnostics diagnostics;
 };
+
+using ParserIterator = SourceTreeIterator;

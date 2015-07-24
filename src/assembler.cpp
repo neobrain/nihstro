@@ -33,10 +33,13 @@
 #include <stack>
 
 #include <boost/program_options.hpp>
+#include <boost/range/adaptor/reversed.hpp>
 #include <boost/range/adaptor/sliced.hpp>
 #include <boost/range/algorithm/count_if.hpp>
 
 #include "nihstro/parser_assembly.h"
+#include "nihstro/preprocessor.h"
+#include "nihstro/source_tree.h"
 
 #include "nihstro/shader_binary.h"
 #include "nihstro/shader_bytecode.h"
@@ -398,25 +401,12 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    std::string input_code;
-    std::string::iterator begin;
-    std::string::iterator preparse_begin;
-    unsigned code_line = 0;
+    // TODO: Catch exceptions!
+    SourceTree source_code = PreprocessAssemblyFile(input_filename);
 
-    std::ifstream input_file(input_filename);
-    if (input_file)
-    {
-        input_file.seekg(0, std::ios::end);
-        input_code.resize(input_file.tellg());
-        input_file.seekg(0, std::ios::beg);
-        input_file.read(&input_code[0], input_code.size());
-        input_file.close();
-    }
-    else
-    {
-        std::cerr << "Could not open input file " << input_filename << std::endl;
-        return 1;
-    }
+    SourceTreeIterator begin(source_code);
+    SourceTreeIterator preparse_begin(source_code);
+
 
     try {
 
@@ -485,15 +475,15 @@ int main(int argc, char* argv[])
 
     // First off, build label table via preprocessing
     try {
-    begin = input_code.begin();
-    while (begin != input_code.end()) {
+    begin = source_code.begin();
+    while (begin != source_code.end()) {
         Parser parser(context);
         StatementLabel statement_label;
         OpCode opcode;
 
-        parser.Skip(begin, input_code.end());
+        parser.Skip(begin, source_code.end());
 
-        if (parser.ParseLabel(begin, input_code.end(), &statement_label)) {
+        if (parser.ParseLabel(begin, source_code.end(), &statement_label)) {
             std::string label_symbol = statement_label;
 
             auto it = std::find(symbol_table.begin(), symbol_table.end(), label_symbol);
@@ -505,7 +495,7 @@ int main(int argc, char* argv[])
 
             CustomLabelInfo label_info = { program_write_offset, symbol_table_index };
             label_table.push_back(label_info);
-        } else if (parser.ParseOpCode(begin, input_code.end(), &opcode)) {
+        } else if (parser.ParseOpCode(begin, source_code.end(), &opcode)) {
             // Increment program address for anything which will generate a non-pseudo-instruction.
             if (static_cast<uint32_t>((OpCode::Id)opcode) < static_cast<uint32_t>(OpCode::Id::PSEUDO_INSTRUCTION_START) ||
                 opcode == OpCode::Id::GEN_IF || opcode == OpCode::Id::GEN_CALL ||
@@ -514,10 +504,10 @@ int main(int argc, char* argv[])
             }
 
             // TODO: This might cause issues with trivial opcodes...
-            parser.SkipSingleLine(begin, input_code.end());
+            parser.SkipSingleLine(begin, source_code.end());
         } else {
             // If it's neither a (recognized) instruction nor a label, skip this line and complain later if need be
-            parser.SkipSingleLine(begin, input_code.end());
+            parser.SkipSingleLine(begin, source_code.end());
         }
     }
     } catch (...) {
@@ -527,12 +517,12 @@ int main(int argc, char* argv[])
     }
 
 
-    begin = input_code.begin();
+    begin = source_code.begin();
     preparse_begin = begin;
 
     Parser parser(context);
     program_write_offset = 0;
-    while (begin != input_code.end()) {
+    while (begin != source_code.end()) {
         StatementLabel statement_label;
         FloatOpInstruction statement_instruction;
         CompareInstruction compare_instruction;
@@ -542,7 +532,7 @@ int main(int argc, char* argv[])
         OpCode statement_simple;
 
         // First off, move iterator past preceding comments, blanks, etc
-        code_line += parser.Skip(begin, input_code.end());
+        parser.Skip(begin, source_code.end());
 
         auto AssertRegisterReadable = [](RegisterType type) {
             if (type != RegisterType::Input && type != RegisterType::Temporary &&
@@ -554,13 +544,12 @@ int main(int argc, char* argv[])
                 throw "Specified register " + std::to_string((int)type) + " " + std::to_string(index) + " is not writeable (only output and temporary registers are writeable)";
         };
 
-        ++code_line;
 
         // Now perform the actual parsing
         preparse_begin = begin;
-        if (parser.ParseLabel(begin, input_code.end(), &statement_label)) {
+        if (parser.ParseLabel(begin, source_code.end(), &statement_label)) {
             // Already handled above
-        } else if (parser.ParseSimpleInstruction(begin, input_code.end(), &statement_simple)) {
+        } else if (parser.ParseSimpleInstruction(begin, source_code.end(), &statement_simple)) {
             OpCode opcode = statement_simple;
 
             switch (opcode) {
@@ -650,7 +639,7 @@ int main(int argc, char* argv[])
                 throw ss.str();
             }
             }
-        } else if (parser.ParseFloatOp(begin, input_code.end(), &statement_instruction)) {
+        } else if (parser.ParseFloatOp(begin, source_code.end(), &statement_instruction)) {
             auto& instr = statement_instruction;
 
             Instruction shinst;
@@ -888,7 +877,7 @@ int main(int argc, char* argv[])
                     break;
             }
             ++program_write_offset;
-        } else if (parser.ParseCompare(begin, input_code.end(), &compare_instruction)) {
+        } else if (parser.ParseCompare(begin, source_code.end(), &compare_instruction)) {
             Instruction shinst;
             shinst.hex = 0;
             shinst.opcode.Assign(compare_instruction.GetOpCode());
@@ -954,7 +943,7 @@ int main(int argc, char* argv[])
 
             instructions.push_back(shinst);
             ++program_write_offset;
-        } else if (parser.ParseFlowControl(begin, input_code.end(), &statement_flow_control)) {
+        } else if (parser.ParseFlowControl(begin, source_code.end(), &statement_flow_control)) {
             auto abstract_opcode = statement_flow_control.GetOpCode();
             assert(abstract_opcode == OpCode::Id::GEN_IF   ||
                    abstract_opcode == OpCode::Id::GEN_JMP  ||
@@ -1141,7 +1130,7 @@ int main(int argc, char* argv[])
 
             instructions.push_back(shinst);
             ++program_write_offset;
-        } else if (parser.ParseSetEmit(begin, input_code.end(), &statement_setemit)) {
+        } else if (parser.ParseSetEmit(begin, source_code.end(), &statement_setemit)) {
             if (!geo_shader) {
                 std::cerr << "Warning: Encountered SETEMIT while compiling a vertex shader. Did you mean to compile a geometry shader?" << std::endl;
             }
@@ -1155,7 +1144,7 @@ int main(int argc, char* argv[])
 
             instructions.push_back(shinst);
             ++program_write_offset;
-        } else if (parser.ParseDeclaration(begin, input_code.end(), &statement_declaration)) {
+        } else if (parser.ParseDeclaration(begin, source_code.end(), &statement_declaration)) {
             auto& var = statement_declaration;
 
             // TODO: Support not specifying any uniform name
@@ -1312,11 +1301,11 @@ int main(int argc, char* argv[])
             }
 
             identifier_table.insert({idname, ret});
-        } else if (begin != input_code.end()) {
+        } else if (begin != source_code.end()) {
             // TODO: Actually, this should be a hint about invalid intruction formats, but on Windows even EOF triggers this for some reason.
 
-            std::cerr << input_filename << ":" << code_line << ": warning: Unknown instruction format, treating like EOF: \"" << std::endl;
-            std::cerr << std::string(preparse_begin, std::find(preparse_begin, input_code.end(), '\n')) << "\"" << std::endl;
+            std::cerr << input_filename << ":" << preparse_begin.GetLineNumber() << ": warning: Unknown instruction format, treating like EOF: \"" << std::endl;
+            std::cerr << std::string(preparse_begin, std::find(preparse_begin, source_code.end(), '\n')) << "\"" << std::endl;
             break;
         }
     }
@@ -1444,15 +1433,33 @@ int main(int argc, char* argv[])
     }
 
     } catch (const char* err) {
-        std::cerr << input_filename << ":" << code_line << ": error: " << err << std::endl;
-        size_t start_pos = std::distance(input_code.begin(), preparse_begin);
-        std::cerr << "\t" << input_code.substr(start_pos, input_code.find('\n', start_pos) - start_pos) << std::endl;
+        std::vector<SourceTree*> trees;
+        SourceTree* tree = preparse_begin.GetCurrentTree();
+        while (tree->parent) {
+            trees.push_back(tree->parent);
+            tree = tree->parent;
+        }
+        for (auto& tree : trees | boost::adaptors::reversed) {
+            std::cerr << "In file included by " << tree->file_info.filename << ":" << preparse_begin.GetParentIterator(tree).GetLineNumber() << std::endl;
+        }
+        std::cerr << preparse_begin.GetCurrentFilename() << ":" << preparse_begin.GetCurrentLineNumber() << ": error: " << err << std::endl;
+        size_t start_pos = std::distance(source_code.begin(), preparse_begin);
+        std::cerr << "\t" << std::string(preparse_begin, std::find(preparse_begin, source_code.end(), '\n')) << std::endl;
         return 1;
     }
     catch (const std::string& err) {
-        std::cerr << input_filename << ":" << code_line << ": error: " << err << std::endl;
-        size_t start_pos = std::distance(input_code.begin(), preparse_begin);
-        std::cerr << "\t" << input_code.substr(start_pos, input_code.find('\n', start_pos) - start_pos) << std::endl;
+        std::vector<SourceTree*> trees;
+        SourceTree* tree = preparse_begin.GetCurrentTree();
+        while (tree->parent) {
+            trees.push_back(tree->parent);
+            tree = tree->parent;
+        }
+        for (auto& tree : trees | boost::adaptors::reversed) {
+            std::cerr << "In file included by " << tree->file_info.filename << ":" << preparse_begin.GetParentIterator(tree).GetLineNumber() << std::endl;
+        }
+        std::cerr << preparse_begin.GetCurrentFilename() << ":" << preparse_begin.GetCurrentLineNumber() << ": error: " << err << std::endl;
+        size_t start_pos = std::distance(source_code.begin(), preparse_begin);
+        std::cerr << "\t" << std::string(preparse_begin, std::find(preparse_begin, source_code.end(), '\n')) << std::endl;
         return 1;
     }
 

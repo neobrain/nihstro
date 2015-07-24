@@ -17,6 +17,7 @@ install(TARGETS nihstro-disassemble DESTINATION bin)
 # TODO: What if program_options was found but not unit_test_framework?
 if(Boost_FOUND)
     set(PARSER_SRCS src/parser_assembly.cpp
+                    src/preprocessor.cpp
                     src/parser_assembly/common.cpp
                     src/parser_assembly/compare.cpp
                     src/parser_assembly/declaration.cpp
