@@ -88,7 +88,7 @@ struct transform_attribute<InputSwizzlerMask, std::vector<InputSwizzlerMask::Com
 }}} // namespaces
 
 template<>
-CommonRules<std::string::iterator>::CommonRules(const ParserContext& context) {
+CommonRules<ParserIterator>::CommonRules(const ParserContext& context) {
     // Setup symbol table
     opcodes_trivial.add
                ( "nop",      OpCode::Id::NOP      )

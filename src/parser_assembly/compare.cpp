@@ -66,7 +66,7 @@ BOOST_FUSION_ADAPT_STRUCT(
 )
 
 template<>
-CompareParser<std::string::iterator>::CompareParser(const ParserContext& context)
+CompareParser<ParserIterator>::CompareParser(const ParserContext& context)
                 : CompareParser::base_type(instruction),
                   common(context),
                   opcodes_compare(common.opcodes_compare),

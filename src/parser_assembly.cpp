@@ -141,11 +141,11 @@ LabelParser<Iterator>::LabelParser(const ParserContext& context)
 
         qi::on_error<qi::fail>(label, error_handler(phoenix::ref(diagnostics), _1, _2, _3, _4));
 }
-template struct LabelParser<std::string::iterator>;
+template struct LabelParser<ParserIterator>;
 
 
 struct Parser::ParserImpl {
-    using Iterator = std::string::iterator;
+    using Iterator = SourceTreeIterator;
 
     ParserImpl(const ParserContext& context) : label(context), plain_instruction(context),
                                                simple_instruction(context), instruction(context),

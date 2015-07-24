@@ -146,7 +146,8 @@ template<typename Attr, typename Parser, typename Skipper>
 static boost::optional<Attr> parse(const std::string& input, const Parser& parser, const Skipper& skipper) {
     BOOST_TEST_MESSAGE(("Parsing \"" + input + "\"").c_str());
     Attr attr;
-    std::string inp(input);
+    SourceTree inp;
+    inp.code = input;
     if (boost::spirit::qi::phrase_parse(inp.begin(), inp.end(), parser, skipper, attr))
         return attr;
     else
@@ -204,8 +205,8 @@ static void CheckDeclaration(const boost::optional<StatementDeclaration>& declar
 
 BOOST_AUTO_TEST_CASE(declaration) {
     ParserContext context;
-    DeclarationParser<std::string::iterator> declaration_parser(context);
-    AssemblySkipper<std::string::iterator> skipper;
+    DeclarationParser<ParserIterator> declaration_parser(context);
+    AssemblySkipper<ParserIterator> skipper;
 
     {
     // Plain alias
@@ -240,8 +241,8 @@ BOOST_AUTO_TEST_CASE(declaration) {
 
 BOOST_AUTO_TEST_CASE(label) {
     ParserContext context;
-    LabelParser<std::string::iterator> label_parser(context);
-    AssemblySkipper<std::string::iterator> skipper;
+    LabelParser<ParserIterator> label_parser(context);
+    AssemblySkipper<ParserIterator> skipper;
 
     {
     auto label = parse<StatementLabel>("my_label:", label_parser, skipper);
@@ -262,8 +263,8 @@ static void CheckParsedArithmeticInstruction(const boost::optional<FloatOpInstru
 BOOST_AUTO_TEST_CASE(arithmetic) {
     ParserContext context;
 
-    FloatOpParser<std::string::iterator> arithmetic_parser(context);
-    AssemblySkipper<std::string::iterator> skipper;
+    FloatOpParser<ParserIterator> arithmetic_parser(context);
+    AssemblySkipper<ParserIterator> skipper;
 
     {
     // one-argument instruction
@@ -335,8 +336,8 @@ static void CheckParsedFlowControlInstruction(const boost::optional<FlowControlI
 
 BOOST_AUTO_TEST_CASE(flowcontrol) {
     ParserContext context;
-    FlowControlParser<std::string::iterator> parser(context);
-    AssemblySkipper<std::string::iterator> skipper;
+    FlowControlParser<ParserIterator> parser(context);
+    AssemblySkipper<ParserIterator> skipper;
 
     {
     // If-conditionals with two arguments
@@ -379,8 +380,8 @@ static void CheckParsedCompareInstruction(const boost::optional<CompareInstructi
 
 BOOST_AUTO_TEST_CASE(compare) {
     ParserContext context;
-    CompareParser<std::string::iterator> parser(context);
-    AssemblySkipper<std::string::iterator> skipper;
+    CompareParser<ParserIterator> parser(context);
+    AssemblySkipper<ParserIterator> skipper;
 
     {
     // Two separate comparisons

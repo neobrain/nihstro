@@ -59,7 +59,7 @@ BOOST_FUSION_ADAPT_STRUCT(
 )
 
 template<>
-FloatOpParser<std::string::iterator>::FloatOpParser(const ParserContext& context)
+FloatOpParser<ParserIterator>::FloatOpParser(const ParserContext& context)
                 : FloatOpParser::base_type(float_instruction),
                   common(context),
                   opcodes_float(common.opcodes_float),

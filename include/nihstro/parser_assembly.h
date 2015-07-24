@@ -36,6 +36,8 @@
 #include <boost/optional.hpp>
 #include <boost/variant.hpp>
 
+#include "source_tree.h"
+
 #include "shader_binary.h"
 #include "shader_bytecode.h"
 
@@ -327,7 +329,7 @@ struct ParserContext {
 
 
 struct Parser {
-    using Iterator = std::string::iterator;
+    using Iterator = SourceTreeIterator;
 
     Parser(const ParserContext& context);
     ~Parser();

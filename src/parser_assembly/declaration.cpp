@@ -76,7 +76,7 @@ void swap(nihstro::Condition& a, nihstro::Condition& b) {
 }*/
 
 template<>
-DeclarationParser<std::string::iterator>::DeclarationParser(const ParserContext& context)
+DeclarationParser<ParserIterator>::DeclarationParser(const ParserContext& context)
                 : DeclarationParser::base_type(declaration),
                   common(context),
                   identifier(common.identifier), swizzle_mask(common.swizzle_mask),

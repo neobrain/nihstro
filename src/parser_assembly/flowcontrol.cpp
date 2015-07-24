@@ -84,7 +84,7 @@ void swap(nihstro::Condition& a, nihstro::Condition& b) {
 }
 
 template<>
-FlowControlParser<std::string::iterator>::FlowControlParser(const ParserContext& context)
+FlowControlParser<ParserIterator>::FlowControlParser(const ParserContext& context)
                 : FlowControlParser::base_type(flow_control_instruction),
                   common(context),
                   opcodes_flowcontrol(common.opcodes_flowcontrol),
