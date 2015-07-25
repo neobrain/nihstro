@@ -37,7 +37,7 @@ Notes:
 * subtraction can be performed using negation: `add r0, c0, -c1`
 * when chaining an addition and a multiplication, consider using `mad` instead
 
-#### mul: Per-componenet floating point multiplication
+#### mul: Per-component floating point multiplication
 Syntax: `mul dest_operand, src1_operand, src2_operand`
 
 Operation: `dest[i] = src1[i] * src2[i]`
@@ -140,7 +140,7 @@ Restrictions:
 * `src1`, `src2`, and `dest` must have the same number of components
 * not more than one of the source operands may be a float uniform register and/or use dynamic indexing
 
-#### dph: Floating point homogenous dot-product
+#### dph: Floating point homogeneous dot-product
 Syntax: `dph dest_operand, src1_operand, src2_operand`
 
 Operation: `dest[i] = src1[0]*src2[0]+src1[1]*src2[1]+src1[2]*src2[2]+src1[3])`
