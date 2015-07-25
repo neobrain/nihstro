@@ -8,8 +8,9 @@ This page seeks to be a formal-ish specification of the input assembly language 
 This document is is intended to give developers an idea of how things are expected to work. Please file issue reports for any deviations in nihstro's behavior from this specifications that you find. Similarly, any inclarities in the specification will be corrected if reported, too.
 
 ## Structure
-nihcode is a sequence of statements, each of which must be put onto a separate line. There are four types of statements:
+nihcode is a sequence of statements, each of which must be put onto a separate line. There are five types of statements:
 * version information statements
+* include statement
 * alias declaration statements,
 * label declaration statements, and
 * instruction statements,
@@ -19,11 +20,13 @@ A pseudo-code example of nihcode looks like this:
 
     // First example shader
     .version 0.1                  // version information
-
+    
     .alias inpos v0               // alias declaration
     .alias intex v1               // alias declaration
     .alias pos o0    as position  // alias declaration
     .alias pos o1.xy as texcoord0 // alias declaration
+
+    .include "utils.h"            // include utility functionality
 
     main:                         // label declaration
         mov o0, v0                // instruction
@@ -114,7 +117,12 @@ Used by `jmp` and `call`.
 
 A full instruction set reference is planned to be drafted. Until that is done, refer to http://3dbrew.org/wiki/Shader_Instruction_Set for documentation on the various opcodes. Is is suggested that you take a look at the nihstro examples to get a better picture of how to apply that information.
 
-##version information
+## Include Statements
+`.include "filename"`
+
+Replaces the `.include` line with the contents of the given file. The filename is taken to be relative to the file it was included from.
+
+## Version Information
 `.version number`
 
 This statement is a hint for the compiler to see which language specification the shader was written against. It may be used to toggle a compatibility assembling mode.
