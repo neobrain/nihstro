@@ -663,6 +663,19 @@ union SwizzlePattern {
         w = 3
     };
 
+    /**
+     * Gets the raw 8-bit selector for the specified (1-indexed) source register.
+     */
+    unsigned GetRawSelector(unsigned src) const {
+        if (src == 0 || src > 3)
+            throw std::out_of_range("src needs to be between 1 and 3");
+
+        unsigned selectors[] = {
+            src1_selector, src2_selector, src3_selector
+        };
+        return selectors[src - 1];
+    }
+
     Selector GetSelectorSrc1(int comp) const {
         Selector selectors[] = {
             src1_selector_0, src1_selector_1, src1_selector_2, src1_selector_3
@@ -761,18 +774,21 @@ union SwizzlePattern {
     BitField< 0, 4, uint32_t> dest_mask;
 
     BitFlag < 4,    uint32_t> negate_src1;
+    BitField< 5, 8, uint32_t> src1_selector;
     BitField< 5, 2, Selector> src1_selector_3;
     BitField< 7, 2, Selector> src1_selector_2;
     BitField< 9, 2, Selector> src1_selector_1;
     BitField<11, 2, Selector> src1_selector_0;
 
     BitFlag <13,    uint32_t> negate_src2;
+    BitField<14, 8, uint32_t> src2_selector;
     BitField<14, 2, Selector> src2_selector_3;
     BitField<16, 2, Selector> src2_selector_2;
     BitField<18, 2, Selector> src2_selector_1;
     BitField<20, 2, Selector> src2_selector_0;
 
     BitFlag <22,    uint32_t> negate_src3;
+    BitField<23, 8, uint32_t> src3_selector;
     BitField<23, 2, Selector> src3_selector_3;
     BitField<25, 2, Selector> src3_selector_2;
     BitField<27, 2, Selector> src3_selector_1;
