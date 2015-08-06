@@ -12,7 +12,7 @@ nihstro is well-modularized to minimize dependencies for any particular use case
 nihstro includes a standalone shader assembler for generating [SHBIN](http://3dbrew.org/wiki/SHBIN) files from human-readable shader source code (the syntax of which is called "nihcode"). It is perfectly suitable for homebrew development. Shader source needs to follow the [nihcode specification](docs/nihcode_spec.md).
 
 Usage:
-`nihstro-assemble <output_filename.shbin> <input_filename.vsh>`
+`nihstro-assemble <input_filename.vsh> -o <output_filename.shbin>`
 
 Reads vertex shader source code from the input file and generates a shader binary from it.
 
