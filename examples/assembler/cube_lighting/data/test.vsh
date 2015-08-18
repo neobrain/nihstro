@@ -39,8 +39,8 @@ proj:  // result.pos = projMtx * tempreg
 
 tex:  // result.texcoord = in.texcoord
 	mov outtex0,  v1.xyzw
-	mov outtex1,  c20.yyyw
-	mov outtex2,  c20.yyyw
+	mov outtex1,  c32.yyyw
+	mov outtex2,  c32.yyyw
 
 lighting: // color = sum over all lights(diffuse * clamp(dot(L,N),0) + ambient)
 	mov r0, myconst.yyyw

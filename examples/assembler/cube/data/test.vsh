@@ -32,8 +32,8 @@ proj:  // result.pos = projMtx * tempreg
 
 tex:  // result.texcoord = in.texcoord
 	mov outtex0,  v1
-	mov outtex1,  c20.yyyw
-	mov outtex2,  c20.yyyw
+	mov outtex1,  c32.yyyw
+	mov outtex2,  c32.yyyw
 
 col:  // Hacky lighting: color = ambient.xyz + clamp(dot(L,N), 1.0) * ambient.www
 	dp3 r0.xyz,     lightDirection.xyz, v2.xyz
