@@ -32,15 +32,15 @@ mdvl:  // tempreg = mdlvMtx * in.pos
 	mov r0.w,  myconst.w
 
 proj:  // result.pos = projMtx * tempreg
-	dp4 o0.x,  projection[0],  r0
-	dp4 o0.y,  projection[1],  r0
-	dp4 o0.z,  projection[2],  r0
-	dp4 o0.w,  projection[3],  r0
+	dp4 outpos.x,  projection[0],  r0
+	dp4 outpos.y,  projection[1],  r0
+	dp4 outpos.z,  projection[2],  r0
+	dp4 outpos.w,  projection[3],  r0
 
 tex:  // result.texcoord = in.texcoord
 	mov outtex0,  v1.xyzw
-	mov outtex1,  c20.yyyw
-	mov outtex2,  c20.yyyw
+	mov outtex1,  myconst.yyyw
+	mov outtex2,  myconst.yyyw
 
 lighting: // color = sum over all lights(diffuse * clamp(dot(L,N),0) + ambient)
 	mov r0, myconst.yyyw
