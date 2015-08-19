@@ -30,6 +30,7 @@
 // #define BOOST_SPIRIT_DEBUG
 
 #include <boost/fusion/include/adapt_struct.hpp>
+#include <boost/fusion/include/swap.hpp>
 #include <boost/spirit/include/qi.hpp>
 
 #include "nihstro/parser_assembly.h"
