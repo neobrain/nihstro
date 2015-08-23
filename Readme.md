@@ -16,6 +16,13 @@ Usage:
 
 Reads vertex shader source code from the input file and generates a shader binary from it.
 
+Further command line options:
+* `-h, --help`: Show command line usage
+* `-i, --input`: Explicit switch for specifying the input shader source filename (if omitted, the first switch-less argument is interpreted as the filename)
+* `-o, --output`: Output shbin filename (required)
+* `-e, --entrypoint`: label name in the input source at which shader execution should start (defaults to "main")
+* `-g, --geo_shader`: Compile shader source as a geometry shader
+
 ### Shader disassembler
 
 nihstro includes a standalone shader disassembler for disassembling SHBIN files and inspecting meta data (symbol information, constant values, etc).
