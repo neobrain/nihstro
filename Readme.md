@@ -1,5 +1,7 @@
 # nihstro - 3DS shader tools
 
+[![Travis CI Build Status](https://travis-ci.org/neobrain/nihstro.svg)](https://travis-ci.org/neobrain/nihstro)
+
 nihstro is a collection of tools for 3DS shaders targeted at homebrew development and/or reverse engineering. Currently, it supports assembling 3DS shader binaries from assembly source code and disassembling shaders from `shbin` files. It also provides C++ interfaces for analyzing and runtime-compiling shaders.
 
 This project is released under a three-clause BSD license. For details see license.txt.

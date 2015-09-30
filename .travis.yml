@@ -2,16 +2,23 @@ os:
   - linux
 
 language: cpp
+sudo: false
 
-before_install:
- - sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
- - sudo apt-get -qq update
- - sudo apt-get -qq install "g++-4.9" libboost1.48-all-dev
- - sudo update-alternatives --install "/usr/bin/g++" g++ "/usr/bin/g++-4.9" 90
- - mkdir -p $HOME/.local
- - curl http://www.cmake.org/files/v2.8/cmake-2.8.11-Linux-i386.tar.gz | tar -xz -C $HOME/.local --strip-components=1
+addons:
+  apt:
+    sources:
+      - ubuntu-toolchain-r-test
+      - kalakris-cmake
+      - boost-latest
+    packages:
+      - gcc-4.9
+      - g++-4.9
+      - cmake
+      - libboost1.55-all-dev
 
 script:
+ - export CC=gcc-4.9
+ - export CXX=g++-4.9
  - mkdir build
  - cd build
  - cmake ..
