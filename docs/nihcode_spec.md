@@ -115,7 +115,7 @@ Used by `jmp` and `call`.
 
  `condition` may either be an identifier of a boolean uniform or a conditional expression. Examples for conditional expressions are `cc.x`, `!cc.x`, `!cc.xy`, `cc.x && !cc.y`, and `cc.x || cc.y`, where `{!}cc.xy` is equivalent to `{!}cc.x && {!}cc.y`. `target_label` and `return_label` must be label identifiers. Their meaning depends on the given opcode.
 
-A full instruction set reference is planned to be drafted. Until that is done, refer to http://3dbrew.org/wiki/Shader_Instruction_Set for documentation on the various opcodes. Is is suggested that you take a look at the nihstro examples to get a better picture of how to apply that information.
+For a full instruction set reference, go to [instruction set reference](instruction_set.md). You may also want to refer to [3dbrew](http://3dbrew.org/wiki/Shader_Instruction_Set) for low-level documentation on each opcode. Is is suggested that you take a look at the nihstro examples to get a better picture of how to apply that information.
 
 ## Include Statements
 `.include "filename"`
