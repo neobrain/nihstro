@@ -56,6 +56,14 @@ The C++ headers `shader_bytecode.h` and `shader_binary` can be easily be include
 
 For the standalone assembler and disassembler, you will also need CMake to generate build files (however it is simple to setup a different build system from scratch if need be), and at least parts of the [Boost libraries](http://www.boost.org/) installed (including Spirit, Fusion, and others).
 
+### Installing dependencies on Windows
+
+You will need to download [CMake](https://cmake.org/download/) and [Boost](http://www.boost.org/users/download/) from their respective download pages. Both projects provide prebuilt binaries. Note that the Boost binaries only work with MSVC, so MinGW users will need to obtain prebuilt binaries from an unofficial source (not recommended) or build Boost from source.
+
+### Installing dependencies on Linux
+
+Chances are your Linux distribution already has CMake and Boost installed. Use your package manager to verify this is the case and to install them if need be. Note that most distributions provide program binaries and development libraries in separate packages; for building nihstro, both are needed.
+
 ### Installing dependencies on OS X
 
 On OS X, it is recommended that you use [Homebrew](http://brew.sh/) to install dependencies. You'll need to run the following to build nihstro:
@@ -64,9 +72,9 @@ On OS X, it is recommended that you use [Homebrew](http://brew.sh/) to install d
 brew install cmake boost
 ```
 
-### Compiling
+### Compiling on Linux, OS X, and other Unix-like systems
 
-To compile the standalone assembler and disassembler, run:
+To compile the standalone assembler and disassembler, run the following commands from within the nihstro root directory:
 
 ```
 mkdir -p build
@@ -76,6 +84,16 @@ make
 ```
 
 This will build the `nihstro-assemble` and `nihstro-disassemble` standalone executables inside the `build` directory. 
+
+### Compiling on Windows
+
+Start the [CMake GUI](https://cmake.org/runningcmake/). You will have to provide two paths: The source code location and the build directory. Point the former to the nihstro root directory, and the latter to a subdirectory called `build`. You may need to create this directory manually if it doesn't exist.
+
+To make sure CMake finds your Boost installation, press the "Add Entry" button and create a new PATH variable with the name `BOOST_ROOT`. Point it towards the root directory of your boost installation. The correct folder should contain a subdirectory called `boost` with lots of further child directories.
+
+Once you're done, hit the "Configure" button and adjust the compiler settings appropriately (usually, the default settings should be fine). If an error occurs, CMake might have trouble locating your Boost installation, and you should double-check that you installed the correct set of Boost libraries and that you set up the `BOOST_ROOT` variable correctly.
+
+If all went fine, click "Generate" and use the generated build files in the `build` subdirectory to build nihstro. In particular if you're using MSVC, open the file `build/nihstro.sln` in Visual Studio.
 
 ## Contributing
 I welcome any contributions! Just create a GitHub fork and submit your changes back via pull requests.
