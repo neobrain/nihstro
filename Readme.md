@@ -49,11 +49,33 @@ A simple [example program](examples/inline_assembler/simple) is included to illu
 Note that the inline assembler is highly experimental. It may or may not work for you yet, and its API will change a lot in the future.
 
 ## Building
+
 All nihstro components require compiler support for C++11 to work.
 
-The C++ headers `shader_bytecode.h` and `shader_binary` can be easily be included in other project and hence are easy to integrate into any build system as long as nihstro's directory structure is preserved.
+The C++ headers `shader_bytecode.h` and `shader_binary` can be easily be included in other project and hence are easy to integrate into any build system (as long as nihstro's directory structure is preserved).
 
-For the standalone assembler and disassembler, you will also need CMake to generate build files, however it is simple to setup a different build system from scratch if need be. If you want to use the standalone assembler, you will need to have at least parts of the [Boost libraries](http://www.boost.org/) installed (including Spirit, Fusion, and others).
+For the standalone assembler and disassembler, you will also need CMake to generate build files (however it is simple to setup a different build system from scratch if need be), and at least parts of the [Boost libraries](http://www.boost.org/) installed (including Spirit, Fusion, and others).
+
+### Installing dependencies on OS X
+
+On OS X, it is recommended that you use [Homebrew](http://brew.sh/) to install dependencies. You'll need to run the following to build nihstro:
+
+```
+brew install cmake boost
+```
+
+### Compiling
+
+To compile the standalone assembler and disassembler, run:
+
+```
+mkdir -p build
+cd build
+cmake ..
+make
+```
+
+This will build the `nihstro-assemble` and `nihstro-disassemble` standalone executables inside the `build` directory. 
 
 ## Contributing
 I welcome any contributions! Just create a GitHub fork and submit your changes back via pull requests.
