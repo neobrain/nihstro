@@ -27,6 +27,7 @@
 
 #pragma once
 
+#include <cassert>
 #include <cstdint>
 #include <map>
 #include <stdexcept>
@@ -86,6 +87,10 @@ struct SourceRegister {
             return value - 0x10;
         else if (GetRegisterType() == RegisterType::FloatUniform)
             return value - 0x20;
+        else {
+            assert(false && "Unsupported register type given to nihstro::SourceRegister::GetIndex");
+            return -1; // Unreachable
+        }
     }
 
     static const SourceRegister FromTypeAndIndex(RegisterType type, int index) {
@@ -96,9 +101,9 @@ struct SourceRegister {
             reg.value = index + 0x10;
         else if (type == RegisterType::FloatUniform)
             reg.value = index + 0x20;
-        else {
-            // TODO: Should throw an exception or something.
-        }
+        else
+            assert(false && "Unsupported register type given to nihstro::SourceRegister::FromTypeAndIndex(");
+
         return reg;
     }
 
@@ -178,9 +183,9 @@ struct DestRegister {
             reg.value = index + 0x10;
         else if (type == RegisterType::FloatUniform) // TODO: Wait what? These shouldn't be writable..
             reg.value = index + 0x20;
-        else {
-            // TODO: Should throw an exception or something.
-        }
+        else
+            assert(false && "Unsupported register type given to nihstro::DestRegister::FromTypeAndIndex");
+
         return reg;
     }
 
