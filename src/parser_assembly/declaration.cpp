@@ -110,12 +110,12 @@ DeclarationParser<ParserIterator>::DeclarationParser(const ParserContext& contex
         // TODO: Would like to use +ascii::blank instead, but somehow that fails to parse lines like ".alias name o2.xy texcoord0" correctly
         string_as = qi::omit[qi::no_skip[*/*+*/ascii::blank >> qi::lit("as") >> +ascii::blank]];
 
-        declaration = ((qi::lit('.') > alias_identifier) >> identifier >> -(qi::lit('-') > identifier) >> -(qi::lit('.') > swizzle_mask))
+        declaration = (((qi::lit('.') > alias_identifier) >> identifier >> -(qi::lit('-') > identifier) >> -(qi::lit('.') > swizzle_mask))
                        >> (
                             (string_as > const_or_semantic)
                             | (dummy_const >> dummy_semantic)
                           )
-                       > end_of_statement;
+                      ) > end_of_statement;
 
         // Error handling
         output_semantics_rule.name("output semantic after \"as\"");

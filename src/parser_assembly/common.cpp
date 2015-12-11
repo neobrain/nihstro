@@ -156,7 +156,7 @@ CommonRules<ParserIterator>::CommonRules(const ParserContext& context) {
         uint_after_sign = qi::uint_; // TODO: NOT dot (or alphanum) after this to prevent floats..., TODO: overflows?
         sign_with_uint = signs > uint_after_sign;
         index_expression_first_term = (qi::attr(+1) >> qi::uint_) | (peek_identifier > identifier);
-        index_expression_following_terms = (qi::lit('+') >> peek_identifier > identifier) | sign_with_uint;
+        index_expression_following_terms = ((qi::lit('+') >> peek_identifier) > identifier) | sign_with_uint;
         index_expression = (-index_expression_first_term)           // the first element has an optional sign
                             >> (*index_expression_following_terms); // following elements have a mandatory sign
 

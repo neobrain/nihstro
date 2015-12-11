@@ -79,7 +79,7 @@ FloatOpParser<ParserIterator>::FloatOpParser(const ParserContext& context)
         // chain of arguments for each group of opcodes
         expression_chain[0] = expression;
         for (int i = 1; i < 4; ++i) {
-            expression_chain[i] = expression_chain[i - 1] >> comma_rule > expression;
+            expression_chain[i] = (expression_chain[i - 1] >> comma_rule) > expression;
         }
 
         // e.g. "add o1, t2, t5"
