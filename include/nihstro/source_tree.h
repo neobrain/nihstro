@@ -93,6 +93,16 @@ struct SourceTreeIterator {
 
     SourceTreeIterator(const SourceTreeIterator&) = default;
 
+    // In C++14, the default construtor will have to create an iterator that
+    // behaves like a past-the-end iterator of some unspecified empty container.
+    // In C++11, the compiler default is good enough.
+#if __cplusplus <= 201103L
+    SourceTreeIterator() = default;
+#else
+# warning "SourceTreeIterator is not compatible with C++ standard superior to C++11 yet"
+#endif
+
+
     SourceTreeIterator& operator += (difference_type n) {
         if (n > 0) {
             while (n) {
