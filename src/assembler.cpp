@@ -1242,6 +1242,9 @@ int main(int argc, char* argv[])
                         constant.b = (uint32_t)values[0] != 0;
                         break;
                     }
+
+                    default:
+                        break;
                 }
 
                 constant_table.push_back(constant);
