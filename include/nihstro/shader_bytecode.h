@@ -629,10 +629,20 @@ union Instruction {
 
         BitField<0x05, 0x5, SourceRegister> src3;
         BitField<0x0a, 0x7, SourceRegister> src2;
-        BitField<0x11, 0x7, SourceRegister> src1;
+        BitField<0x11, 0x5, SourceRegister> src1;
 
         BitField<0x05, 0x7, SourceRegister> src3i;
         BitField<0x0c, 0x5, SourceRegister> src2i;
+
+        // Address register value is used for relative addressing of src2 / src3 (inverted)
+        BitField<0x16, 0x2, uint32_t> address_register_index;
+
+        std::string AddressRegisterName() const {
+            if (address_register_index == 0) return "";
+            else if (address_register_index == 1) return "a0.x";
+            else if (address_register_index == 2) return "a0.y";
+            else /*if (address_register_index == 3)*/ return "aL";
+        }
 
         BitField<0x18, 0x5, DestRegister> dest;
     } mad;
