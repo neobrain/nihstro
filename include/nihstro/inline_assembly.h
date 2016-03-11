@@ -355,7 +355,7 @@ struct InlineAsm {
         return ret;
     }
 
-    static const ShaderBinary CompileToRawBinary(std::initializer_list<InlineAsm> code_) {
+    static ShaderBinary CompileToRawBinary(std::initializer_list<InlineAsm> code_) {
         ShaderBinary binary;
         std::vector<InlineAsm> code(code_);
         for (int i = 0; i < code.size(); ++i) {
@@ -462,7 +462,7 @@ struct InlineAsm {
     }
 
     // Overestimates the actual size
-    static const size_t CompiledShbinSize(std::initializer_list<InlineAsm> code) {
+    static size_t CompiledShbinSize(std::initializer_list<InlineAsm> code) {
         size_t size = 0;
         size += sizeof(DVLBHeader);
         size += sizeof(DVLPHeader);
@@ -499,7 +499,7 @@ struct InlineAsm {
         return size;
     }
 
-    static const std::vector<uint8_t> CompileToShbin(std::initializer_list<InlineAsm> code) {
+    static std::vector<uint8_t> CompileToShbin(std::initializer_list<InlineAsm> code) {
         std::vector<uint8_t> ret(CompiledShbinSize(code));
 
         ShaderBinary bin = CompileToRawBinary(code);

@@ -216,7 +216,7 @@ struct SourceTreeIterator {
         return GetLineNumber();
     }
 
-    const std::string GetCurrentFilename() const {
+    std::string GetCurrentFilename() const {
         if (WithinChild())
             return child_iterator->get().GetCurrentFilename();
 

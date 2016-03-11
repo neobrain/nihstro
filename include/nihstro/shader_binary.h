@@ -181,7 +181,7 @@ union OutputRegisterInfo {
     BitField<32,  4, uint64_t> component_mask;
     BitField<32, 32, uint64_t> descriptor;
 
-    const std::string GetMask() const {
+    std::string GetMask() const {
         std::string ret;
         if (component_mask & 1) ret += "x";
         if (component_mask & 2) ret += "y";
@@ -190,7 +190,7 @@ union OutputRegisterInfo {
         return ret;
     }
 
-    const std::string GetSemanticName() const {
+    std::string GetSemanticName() const {
         static const std::map<Type, std::string> map = {
             { POSITION,   "out.pos"  },
             { QUATERNION, "out.quat" },

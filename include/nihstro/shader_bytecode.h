@@ -88,7 +88,7 @@ struct SourceRegister {
             return value - 0x20;
     }
 
-    static const SourceRegister FromTypeAndIndex(RegisterType type, int index) {
+    static SourceRegister FromTypeAndIndex(RegisterType type, int index) {
         SourceRegister reg;
         if (type == RegisterType::Input)
             reg.value = index;
@@ -102,15 +102,15 @@ struct SourceRegister {
         return reg;
     }
 
-    static const SourceRegister MakeInput(int index) {
+    static SourceRegister MakeInput(int index) {
         return FromTypeAndIndex(RegisterType::Input, index);
     }
 
-    static const SourceRegister MakeTemporary(int index) {
+    static SourceRegister MakeTemporary(int index) {
         return FromTypeAndIndex(RegisterType::Temporary, index);
     }
 
-    static const SourceRegister MakeFloat(int index) {
+    static SourceRegister MakeFloat(int index) {
         return FromTypeAndIndex(RegisterType::FloatUniform, index);
     }
 
@@ -170,7 +170,7 @@ struct DestRegister {
             return value - 0x20;
     }
 
-    static const DestRegister FromTypeAndIndex(RegisterType type, int index) {
+    static DestRegister FromTypeAndIndex(RegisterType type, int index) {
         DestRegister reg;
         if (type == RegisterType::Output)
             reg.value = index;
@@ -184,11 +184,11 @@ struct DestRegister {
         return reg;
     }
 
-    static const DestRegister MakeOutput(int index) {
+    static DestRegister MakeOutput(int index) {
         return FromTypeAndIndex(RegisterType::Output, index);
     }
 
-    static const DestRegister MakeTemporary(int index) {
+    static DestRegister MakeTemporary(int index) {
         return FromTypeAndIndex(RegisterType::Temporary, index);
     }
 
@@ -518,7 +518,7 @@ union Instruction {
     union Common { // TODO: Remove name
         BitField<0x00, 0x7, uint32_t> operand_desc_id;
 
-        const SourceRegister GetSrc1(bool is_inverted) const {
+        SourceRegister GetSrc1(bool is_inverted) const {
             if (!is_inverted) {
                 return src1;
             } else {
@@ -526,7 +526,7 @@ union Instruction {
             }
         }
 
-        const SourceRegister GetSrc2(bool is_inverted) const {
+        SourceRegister GetSrc2(bool is_inverted) const {
             if (!is_inverted) {
                 return src2;
             } else {
@@ -561,7 +561,7 @@ union Instruction {
             BitField<0x15, 0x3, Op> y;
             BitField<0x18, 0x3, Op> x;
 
-            const std::string ToString(Op op) const {
+            std::string ToString(Op op) const {
                 switch (op) {
                 case Equal:        return "==";
                 case NotEqual:     return "!=";
@@ -606,12 +606,12 @@ union Instruction {
     } flow_control;
 
     union {
-        const SourceRegister GetSrc1(bool is_inverted) const {
+        SourceRegister GetSrc1(bool is_inverted) const {
             // The inverted form for src1 is the same, this function is just here for consistency
             return src1;
         }
 
-        const SourceRegister GetSrc2(bool is_inverted) const {
+        SourceRegister GetSrc2(bool is_inverted) const {
             if (!is_inverted) {
                 return src2;
             } else {
@@ -619,7 +619,7 @@ union Instruction {
             }
         }
 
-        const SourceRegister GetSrc3(bool is_inverted) const {
+        SourceRegister GetSrc3(bool is_inverted) const {
             if (!is_inverted) {
                 return src3;
             } else {
