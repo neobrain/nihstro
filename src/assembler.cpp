@@ -1244,6 +1244,7 @@ int main(int argc, char* argv[])
                     }
 
                     default:
+                        throw "Constant registers can only be floats, ints or bools";
                         break;
                 }
 
