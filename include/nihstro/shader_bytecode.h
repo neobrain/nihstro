@@ -541,7 +541,7 @@ union Instruction {
         BitField<0x07, 0x7, SourceRegister> src2i;
         BitField<0x0e, 0x5, SourceRegister> src1i;
 
-        // Address register value is used for relative addressing of src1
+        // Address register value is used for relative addressing of src1 / src2 (inverted)
         BitField<0x13, 0x2, uint32_t> address_register_index;
 
         union CompareOpType {  // TODO: Make nameless once MSVC supports it
