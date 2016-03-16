@@ -162,22 +162,21 @@ int main(int argc, char *argv[])
                       << " as " << std::setw(8) << info.GetSemanticName()
                       << " (" << std::hex << std::setw(16) << std::setfill('0') << (uint64_t)info.hex << std::setfill(' ') << ")" << std::endl;
 
-        size_t max_uniform_name_length = [&]() {
-            // TODO: This segfaults if uniform_table is empty!
-            return std::max_element(parser.shader_info.uniform_table.begin(), parser.shader_info.uniform_table.end(),
-                                    [](const UniformInfo& i1, UniformInfo& i2) { return i1.name.length() < i2.name.length(); }
-                                   )->name.length();
-        }();
-        for (auto& uniform_info : parser.shader_info.uniform_table) {
-            bool is_range = (uniform_info.basic.reg_start != uniform_info.basic.reg_end);
+        if (!parser.shader_info.uniform_table.empty()) {
+            size_t max_uniform_name_length = std::max_element(parser.shader_info.uniform_table.begin(), parser.shader_info.uniform_table.end(),
+                                                              [](const UniformInfo& i1, UniformInfo& i2) { return i1.name.length() < i2.name.length(); }
+                                                             )->name.length();
+            for (auto& uniform_info : parser.shader_info.uniform_table) {
+                bool is_range = (uniform_info.basic.reg_start != uniform_info.basic.reg_end);
 
-            std::cout << "Found uniform symbol \"" << std::setw(max_uniform_name_length) << uniform_info.name
-                      << "\" for register" << (is_range ? "s " : "  ") << std::dec
-                      << GetRegisterName(uniform_info.basic.GetStartType()) << uniform_info.basic.GetStartIndex();
-            if (is_range)
-                std::cout << "-" << GetRegisterName(uniform_info.basic.GetEndType()) << uniform_info.basic.GetEndIndex();
+                std::cout << "Found uniform symbol \"" << std::setw(max_uniform_name_length) << uniform_info.name
+                          << "\" for register" << (is_range ? "s " : "  ") << std::dec
+                          << GetRegisterName(uniform_info.basic.GetStartType()) << uniform_info.basic.GetStartIndex();
+                if (is_range)
+                    std::cout << "-" << GetRegisterName(uniform_info.basic.GetEndType()) << uniform_info.basic.GetEndIndex();
 
-            std::cout << std::endl;
+                std::cout << std::endl;
+            }
         }
 
 // TODO:
