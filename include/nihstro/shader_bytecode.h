@@ -97,7 +97,11 @@ struct SourceRegister {
         else if (type == RegisterType::FloatUniform)
             reg.value = index + 0x20;
         else {
-            // TODO: Should throw an exception or something.
+            std::stringstream ss;
+            ss << "SourceRegister::FromTypeAndIndex: Invalid RegisterType "
+               << GetRegisterName(type)
+               << " must be one of either Input, Temporary or FloatUniform";
+            throw std::logic_error(ss.str());
         }
         return reg;
     }
