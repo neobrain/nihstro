@@ -80,12 +80,21 @@ struct SourceRegister {
     }
 
     int GetIndex() const {
-        if (GetRegisterType() == RegisterType::Input)
+        const RegisterType internalType = GetRegisterType();
+
+        if (internalType == RegisterType::Input)
             return value;
-        else if (GetRegisterType() == RegisterType::Temporary)
+        else if (internalType == RegisterType::Temporary)
             return value - 0x10;
-        else if (GetRegisterType() == RegisterType::FloatUniform)
+        else if (internalType == RegisterType::FloatUniform)
             return value - 0x20;
+
+        std::stringstream ss;
+        ss << "SourceRegister::GetIndex: Invalid internal register type "
+           << GetRegisterName(internalType)
+           << " must be one of either Input, Temporary or FloatUniform";
+
+        throw std::logic_error(ss.str());
     }
 
     static const SourceRegister FromTypeAndIndex(RegisterType type, int index) {
