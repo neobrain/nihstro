@@ -81,6 +81,18 @@ struct InputSwizzlerMask {
 
         return os;
     }
+
+    friend std::string to_string(const Component& v) {
+        std::stringstream ss;
+        ss << v;
+        return ss.str();
+    }
+
+    friend std::string to_string(const InputSwizzlerMask& v) {
+        std::stringstream ss;
+        ss << v;
+        return ss.str();
+    }
 };
 
 using Identifier = std::string;

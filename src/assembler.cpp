@@ -176,6 +176,20 @@ struct SourceSwizzlerMask {
 static InputSwizzlerMask MergeSwizzleMasks(const InputSwizzlerMask& inner_mask, const InputSwizzlerMask& outer_mask) {
     // TODO: Error out if the swizzle masks can't actually be merged..
 
+    auto contains_component = [](const InputSwizzlerMask& swizzle_mask,const nihstro::InputSwizzlerMask::Component &c) -> bool {
+        for (auto &comp : swizzle_mask.components) {
+            if (comp == c)
+                return true;
+        }
+
+        return false;
+    };
+
+    for (const InputSwizzlerMask::Component &c : outer_mask.components) {
+        if (!contains_component(inner_mask, c))
+            throw "Attempt to access component " + to_string(c) + " in vector " + to_string(inner_mask);
+    }
+
     InputSwizzlerMask out;
     out.num_components = outer_mask.num_components;
     for (int comp = 0; comp < outer_mask.num_components; ++comp) {
