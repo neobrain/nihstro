@@ -761,7 +761,7 @@ union SwizzlePattern {
     }
 
     bool DestComponentEnabled(unsigned int i) const {
-        return (dest_mask & (0x8 >> i));
+        return (dest_mask & (0x8 >> i)) != 0;
     }
 
     void SetDestComponentEnabled(unsigned int i, bool enabled) {
