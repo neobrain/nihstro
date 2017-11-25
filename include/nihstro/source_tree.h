@@ -86,6 +86,9 @@ struct SourceTreeIterator {
     using value_type = std::string::iterator::value_type;
     using pointer = std::string::iterator::pointer;
     using iterator_category = std::random_access_iterator_tag;
+    
+    SourceTreeIterator() {
+    }
 
     SourceTreeIterator(SourceTree& tree) : tree(&tree), position(tree.code.begin()), node_iterator(tree.children.begin()) {
         UpdateChildIterator();
@@ -293,7 +296,7 @@ private:
 
     void UpdateChildIterator() {
         if (node_iterator != tree->children.end())
-            child_iterator = SourceTreeIterator(node_iterator->tree);
+            child_iterator = boost::recursive_wrapper<SourceTreeIterator>(node_iterator->tree);
         else
             child_iterator = boost::none;
     }
