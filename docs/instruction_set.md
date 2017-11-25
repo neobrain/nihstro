@@ -211,7 +211,7 @@ Notes:
 Syntax: `if condition`
 
 Operation:
-If `condition` is true, conditionally executes the code between itself and the corresponding `else` or `endif` pseudo-instruction. Otherwise, executes the code in the `else` branch, if one is given (otherwise, skips the branch body and continues after the `endloop` statement).
+If `condition` is true, conditionally executes the code between itself and the corresponding `else` or `endif` pseudo-instruction. Otherwise, executes the code in the `else` branch, if one is given (otherwise, skips the branch body and continues after the `endif` statement).
 
 Restrictions:
 * not more than one `else` branch may be specified (`else if` syntax is not supported)
