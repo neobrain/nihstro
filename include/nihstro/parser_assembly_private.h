@@ -121,7 +121,7 @@ template<typename Iterator>
 struct AssemblySkipper : public qi::grammar<Iterator> {
 
     AssemblySkipper() : AssemblySkipper::base_type(skip) {
-        comments = qi::char_("//") >> *(qi::char_ - qi::eol);
+        comments = (qi::lit("//") | '#' | ';') >> *(qi::char_ - qi::eol);
 
         skip = +(comments | ascii::blank);
     }
