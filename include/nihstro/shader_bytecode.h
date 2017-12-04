@@ -231,10 +231,10 @@ struct OpCode {
         DP4     = 0x02,
         DPH     = 0x03,   // Dot product of Vec4 and Vec3; the Vec3 is made into
                           // a Vec4 by appending 1.0 as the fourth component
-
+        DST     = 0x04,   // Distance, same as in vs_3_0
         EX2     = 0x05,   // Base-2 exponential
         LG2     = 0x06,   // Base-2 logarithm
-
+        LIT     = 0x07,   // Clamp for lighting
         MUL     = 0x08,
         SGE     = 0x09,   // Set to 1.0 if SRC1 is greater or equal to SRC2
         SLT     = 0x0A,   // Set to 1.0 if SRC1 is less than SRC2
@@ -248,10 +248,11 @@ struct OpCode {
         MOV     = 0x13,
 
         DPHI    = 0x18,
-
+        DSTI    = 0x19,
         SGEI    = 0x1A,
         SLTI    = 0x1B,
 
+        BREAK   = 0x20,
         NOP     = 0x21,
         END     = 0x22,
         BREAKC  = 0x23,
@@ -384,10 +385,10 @@ struct OpCode {
             { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments, "dp3" },
             { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments, "dp4" },
             { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments, "dph" },
-            unknown_instruction,
+            { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments, "dst" },
             { OpCode::Type::Arithmetic, OpCode::Info::OneArgument, "exp" },
             { OpCode::Type::Arithmetic, OpCode::Info::OneArgument, "log" },
-            unknown_instruction,
+            { OpCode::Type::Arithmetic, OpCode::Info::OneArgument, "lit" },
             { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments, "mul" },
             { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments, "sge" },
             { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments, "slt" },
@@ -405,14 +406,14 @@ struct OpCode {
             unknown_instruction,
             unknown_instruction,
             { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments | OpCode::Info::SrcInversed, "dphi" },
-            unknown_instruction,
+            { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments | OpCode::Info::SrcInversed, "dsti" },
             { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments | OpCode::Info::SrcInversed, "sgei" },
             { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments | OpCode::Info::SrcInversed, "slti" },
             unknown_instruction,
             unknown_instruction,
             unknown_instruction,
             unknown_instruction,
-            unknown_instruction,
+            { OpCode::Type::Trivial, 0, "break" },
             { OpCode::Type::Trivial, 0, "nop" },
             { OpCode::Type::Trivial, 0, "end" },
             { OpCode::Type::Conditional, OpCode::Info::BREAKC, "breakc" },

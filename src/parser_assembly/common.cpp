@@ -104,6 +104,7 @@ CommonRules<ParserIterator>::CommonRules(const ParserContext& context) {
     opcodes_float[1].add
                ( "exp",      OpCode::Id::EX2      )
                ( "log",      OpCode::Id::LG2      )
+               ( "lit",      OpCode::Id::LIT      )
                ( "flr",      OpCode::Id::FLR      )
                ( "rcp",      OpCode::Id::RCP      )
                ( "rsq",      OpCode::Id::RSQ      )
@@ -113,6 +114,7 @@ CommonRules<ParserIterator>::CommonRules(const ParserContext& context) {
                ( "dp3",      OpCode::Id::DP3      )
                ( "dp4",      OpCode::Id::DP4      )
                ( "dph",      OpCode::Id::DPH      )
+               ( "dst",      OpCode::Id::DST      )
                ( "mul",      OpCode::Id::MUL      )
                ( "sge",      OpCode::Id::SGE      )
                ( "slt",      OpCode::Id::SLT      )
@@ -125,7 +127,8 @@ CommonRules<ParserIterator>::CommonRules(const ParserContext& context) {
                ( "cmp",      OpCode::Id::CMP      );
 
     opcodes_flowcontrol[0].add
-               ( "break",    OpCode::Id::BREAKC   )
+               ( "break",    OpCode::Id::BREAK    )
+               ( "breakc",   OpCode::Id::BREAKC   )
                ( "if",       OpCode::Id::GEN_IF   )
                ( "loop",     OpCode::Id::LOOP     );
     opcodes_flowcontrol[1].add
