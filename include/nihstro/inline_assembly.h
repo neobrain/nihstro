@@ -258,15 +258,16 @@ struct InlineAsm {
 
     // Convenience constructors with implicit swizzle mask
     InlineAsm(OpCode opcode, DestRegisterOrTemporary dest,
-              SourceRegister src1, const SwizzleMask swizzle_src1 = SwizzleMask{ "" }) : InlineAsm(opcode, dest, "", src1, swizzle_src1) {}
-
+              SourceRegister src1, const SwizzleMask& swizzle_src1 = "") : InlineAsm(opcode, dest, "", src1, swizzle_src1) {}
     InlineAsm(OpCode opcode, DestRegisterOrTemporary dest,
               SourceRegister src1, const SwizzleMask& swizzle_src1,
               SourceRegister src2, const SwizzleMask& swizzle_src2 = "") : InlineAsm(opcode, dest, "", src1, swizzle_src1, src2, swizzle_src2) {}
     InlineAsm(OpCode opcode, DestRegisterOrTemporary dest, const DestMask& dest_mask,
-              SourceRegister src1, SourceRegister src2,
-              const SwizzleMask& swizzle_src2 = "") : InlineAsm(opcode, dest, dest_mask, src1, "", src2, swizzle_src2) {}
-
+              SourceRegister src1,
+              SourceRegister src2, const SwizzleMask& swizzle_src2 = "") : InlineAsm(opcode, dest, dest_mask, src1, "", src2, swizzle_src2) {}
+    InlineAsm(OpCode opcode, DestRegisterOrTemporary dest,
+              SourceRegister src1,
+              SourceRegister src2, const SwizzleMask& swizzle_src2 = "") : InlineAsm(opcode, dest, "", src1, "", src2, swizzle_src2) {}
     InlineAsm(OpCode opcode, DestRegisterOrTemporary dest,
               SourceRegister src1, const SwizzleMask& swizzle_src1,
               SourceRegister src2, const SwizzleMask& swizzle_src2,
@@ -279,7 +280,6 @@ struct InlineAsm {
               SourceRegister src1, const SwizzleMask& swizzle_src1,
               SourceRegister src2,
               SourceRegister src3, const SwizzleMask& swizzle_src3 = "") : InlineAsm(opcode, dest, dest_mask, src1, swizzle_src1, src2, "", src3, swizzle_src3) {}
-
     InlineAsm(OpCode opcode, DestRegisterOrTemporary dest,
               SourceRegister src1,
               SourceRegister src2, const SwizzleMask& swizzle_src2,
