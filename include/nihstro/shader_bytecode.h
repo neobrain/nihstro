@@ -376,47 +376,75 @@ struct OpCode {
             return static_cast<Id>(value);
     }
 
-    Info GetInfo() const {
-        switch (EffectiveOpCode()) {
-        case Id::ADD:     return { Type::Arithmetic,         Info::TwoArguments,        "add" };
-        case Id::DP3:     return { Type::Arithmetic,         Info::TwoArguments,        "dp3" };
-        case Id::DP4:     return { Type::Arithmetic,         Info::TwoArguments,        "dp4" };
-        case Id::DPH:     return { Type::Arithmetic,         Info::TwoArguments,        "dph" };
-        case Id::EX2:     return { Type::Arithmetic,         Info::OneArgument,         "exp" };
-        case Id::LG2:     return { Type::Arithmetic,         Info::OneArgument,         "log" };
-        case Id::MUL:     return { Type::Arithmetic,         Info::TwoArguments,        "mul" };
-        case Id::SGE:     return { Type::Arithmetic,         Info::TwoArguments,        "sge" };
-        case Id::SLT:     return { Type::Arithmetic,         Info::TwoArguments,        "slt" };
-        case Id::FLR:     return { Type::Arithmetic,         Info::OneArgument,         "flr" };
-        case Id::MAX:     return { Type::Arithmetic,         Info::TwoArguments,        "max" };
-        case Id::MIN:     return { Type::Arithmetic,         Info::TwoArguments,        "min" };
-        case Id::RCP:     return { Type::Arithmetic,         Info::OneArgument,         "rcp" };
-        case Id::RSQ:     return { Type::Arithmetic,         Info::OneArgument,         "rsq" };
-        case Id::MOVA:    return { Type::Arithmetic,         Info::MOVA,                "mova" };
-        case Id::MOV:     return { Type::Arithmetic,         Info::OneArgument,         "mov" };
-        case Id::DPHI:    return { Type::Arithmetic,         Info::TwoArguments | Info::SrcInversed, "dphi" };
-        case Id::SGEI:    return { Type::Arithmetic,         Info::TwoArguments | Info::SrcInversed, "sgei" };
-        case Id::SLTI:    return { Type::Arithmetic,         Info::TwoArguments | Info::SrcInversed, "slti" };
-        case Id::NOP:     return { Type::Trivial,            0,                         "nop" };
-        case Id::END:     return { Type::Trivial,            0,                         "end" };
-        case Id::BREAKC:  return { Type::Conditional,        Info::BREAKC,              "breakc" };
-        case Id::CALL:    return { Type::Conditional,        Info::CALL,                "call" };
-        case Id::CALLC:   return { Type::Conditional,        Info::CALLC,               "callc" };
-        case Id::CALLU:   return { Type::UniformFlowControl, Info::CALLU,               "callu" };
-        case Id::IFU:     return { Type::UniformFlowControl, Info::IFU,                 "ifu" };
-        case Id::IFC:     return { Type::Conditional,        Info::IFC,                 "ifc" };
-        case Id::LOOP:    return { Type::UniformFlowControl, Info::LOOP,                "loop" };
-        case Id::EMIT:    return { Type::Trivial,            0,                         "emit" };
-        case Id::SETEMIT: return { Type::SetEmit,            0,                         "setemit" };
-        case Id::JMPC:    return { Type::Conditional,        Info::JMPC,                "jmpc" };
-        case Id::JMPU:    return { Type::Conditional,        Info::JMPU,                "jmpu" };
-        case Id::CMP:     return { Type::Arithmetic,         Info::Compare,             "cmp" };
-        case Id::MADI:    return { Type::MultiplyAdd,        Info::SrcInversed,         "madi" };
-        case Id::MAD:     return { Type::MultiplyAdd,        0,                         "mad" };
-
-        default:
-            return { Type::Unknown, 0, "UNK" };
-        }
+    const Info& GetInfo() const {
+        static const OpCode::Info unknown = { OpCode::Type::Unknown, 0, "UNK" };
+        static const OpCode::Info info_table[] =  {
+            { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments, "add" },
+            { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments, "dp3" },
+            { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments, "dp4" },
+            { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments, "dph" },
+            unknown,
+            { OpCode::Type::Arithmetic, OpCode::Info::OneArgument, "exp" },
+            { OpCode::Type::Arithmetic, OpCode::Info::OneArgument, "log" },
+            unknown,
+            { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments, "mul" },
+            { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments, "sge" },
+            { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments, "slt" },
+            { OpCode::Type::Arithmetic, OpCode::Info::OneArgument, "flr" },
+            { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments, "max" },
+            { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments, "min" },
+            { OpCode::Type::Arithmetic, OpCode::Info::OneArgument, "rcp" },
+            { OpCode::Type::Arithmetic, OpCode::Info::OneArgument, "rsq" },
+            unknown,
+            unknown,
+            { OpCode::Type::Arithmetic, OpCode::Info::MOVA, "mova" },
+            { OpCode::Type::Arithmetic, OpCode::Info::OneArgument, "mov" },
+            unknown,
+            unknown,
+            unknown,
+            unknown,
+            { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments | OpCode::Info::SrcInversed, "dphi" },
+            unknown,
+            { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments | OpCode::Info::SrcInversed, "sgei" },
+            { OpCode::Type::Arithmetic, OpCode::Info::TwoArguments | OpCode::Info::SrcInversed, "slti" },
+            unknown,
+            unknown,
+            unknown,
+            unknown,
+            unknown,
+            { OpCode::Type::Trivial, 0, "nop" },
+            { OpCode::Type::Trivial, 0, "end" },
+            { OpCode::Type::Conditional, OpCode::Info::BREAKC, "breakc" },
+            { OpCode::Type::Conditional, OpCode::Info::CALL, "call" },
+            { OpCode::Type::Conditional, OpCode::Info::CALLC, "callc" },
+            { OpCode::Type::UniformFlowControl, OpCode::Info::CALLU, "callu" },
+            { OpCode::Type::UniformFlowControl, OpCode::Info::IFU, "ifu" },
+            { OpCode::Type::Conditional, OpCode::Info::IFC, "ifc" },
+            { OpCode::Type::UniformFlowControl, OpCode::Info::LOOP, "loop" },
+            { OpCode::Type::Trivial, 0, "emit" },
+            { OpCode::Type::SetEmit, 0, "setemit" },
+            { OpCode::Type::Conditional, OpCode::Info::JMPC, "jmpc" },
+            { OpCode::Type::Conditional, OpCode::Info::JMPU, "jmpu" },
+            { OpCode::Type::Arithmetic, OpCode::Info::Compare, "cmp" },
+            { OpCode::Type::Arithmetic, OpCode::Info::Compare, "cmp" },
+            { OpCode::Type::MultiplyAdd, OpCode::Info::SrcInversed, "madi" },
+            { OpCode::Type::MultiplyAdd, OpCode::Info::SrcInversed, "madi" },
+            { OpCode::Type::MultiplyAdd, OpCode::Info::SrcInversed, "madi" },
+            { OpCode::Type::MultiplyAdd, OpCode::Info::SrcInversed, "madi" },
+            { OpCode::Type::MultiplyAdd, OpCode::Info::SrcInversed, "madi" },
+            { OpCode::Type::MultiplyAdd, OpCode::Info::SrcInversed, "madi" },
+            { OpCode::Type::MultiplyAdd, OpCode::Info::SrcInversed, "madi" },
+            { OpCode::Type::MultiplyAdd, OpCode::Info::SrcInversed, "madi" },
+            { OpCode::Type::MultiplyAdd, 0, "mad" },
+            { OpCode::Type::MultiplyAdd, 0, "mad" },
+            { OpCode::Type::MultiplyAdd, 0, "mad" },
+            { OpCode::Type::MultiplyAdd, 0, "mad" },
+            { OpCode::Type::MultiplyAdd, 0, "mad" },
+            { OpCode::Type::MultiplyAdd, 0, "mad" },
+            { OpCode::Type::MultiplyAdd, 0, "mad" },
+            { OpCode::Type::MultiplyAdd, 0, "mad" }
+        };
+        return info_table[value];
     }
 
     operator Id() const {
