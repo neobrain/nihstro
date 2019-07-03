@@ -578,11 +578,35 @@ union Instruction {
     } flow_control;
 
     union {
+        const SourceRegister GetSrc1(bool is_inverted) const {
+            // The regular and inverted instructions use the same field encoding
+            return src1;
+        }
+
+        const SourceRegister GetSrc2(bool is_inverted) const {
+            if (!is_inverted) {
+                return src2;
+            } else {
+                return src2i;
+            }
+        }
+        
+        const SourceRegister GetSrc3(bool is_inverted) const {
+            if (!is_inverted) {
+                return src3;
+            } else {
+                return src3i;
+            }
+        }
+
         BitField<0x00, 0x5, uint32_t> operand_desc_id;
 
         BitField<0x05, 0x5, SourceRegister> src3;
         BitField<0x0a, 0x7, SourceRegister> src2;
         BitField<0x11, 0x7, SourceRegister> src1;
+        
+        BitField<0x05, 0x7, SourceRegister> src3i;
+        BitField<0x0c, 0x5, SourceRegister> src2i;
 
         BitField<0x18, 0x5, DestRegister> dest;
     } mad;
