@@ -502,7 +502,7 @@ union Instruction {
 
     uint32_t hex;
 
-    BitField<0x1a, 0x6, OpCode> opcode;
+    BitFieldNihstro<0x1a, 0x6, OpCode> opcode;
 
 
     // General notes:
@@ -514,7 +514,7 @@ union Instruction {
 
     // Format used e.g. by arithmetic instructions and comparisons
     union Common { // TODO: Remove name
-        BitField<0x00, 0x7, uint32_t> operand_desc_id;
+        BitFieldNihstro<0x00, 0x7, uint32_t> operand_desc_id;
 
         const SourceRegister GetSrc1(bool is_inverted) const {
             if (!is_inverted) {
@@ -536,13 +536,13 @@ union Instruction {
          * Source inputs may be reordered for certain instructions.
          * Use GetSrc1 and GetSrc2 instead to access the input register indices hence.
          */
-        BitField<0x07, 0x5, SourceRegister> src2;
-        BitField<0x0c, 0x7, SourceRegister> src1;
-        BitField<0x07, 0x7, SourceRegister> src2i;
-        BitField<0x0e, 0x5, SourceRegister> src1i;
+        BitFieldNihstro<0x07, 0x5, SourceRegister> src2;
+        BitFieldNihstro<0x0c, 0x7, SourceRegister> src1;
+        BitFieldNihstro<0x07, 0x7, SourceRegister> src2i;
+        BitFieldNihstro<0x0e, 0x5, SourceRegister> src1i;
 
         // Address register value is used for relative addressing of src1 / src2 (inverted)
-        BitField<0x13, 0x2, uint32_t> address_register_index;
+        BitFieldNihstro<0x13, 0x2, uint32_t> address_register_index;
 
         union CompareOpType {  // TODO: Make nameless once MSVC supports it
             enum Op : uint32_t {
@@ -556,8 +556,8 @@ union Instruction {
                 Unk7         = 7
             };
 
-            BitField<0x15, 0x3, Op> y;
-            BitField<0x18, 0x3, Op> x;
+            BitFieldNihstro<0x15, 0x3, Op> y;
+            BitFieldNihstro<0x18, 0x3, Op> x;
 
             const std::string ToString(Op op) const {
                 switch (op) {
@@ -581,7 +581,7 @@ union Instruction {
             else /*if (address_register_index == 3)*/ return "aL";
         }
 
-        BitField<0x15, 0x5, DestRegister> dest;
+        BitFieldNihstro<0x15, 0x5, DestRegister> dest;
     } common;
 
     union FlowControlType {  // TODO: Make nameless once MSVC supports it
@@ -592,12 +592,12 @@ union Instruction {
             JustY = 3
         };
 
-        BitField<0x00, 0x8, uint32_t> num_instructions;
-        BitField<0x0a, 0xc, uint32_t> dest_offset;
+        BitFieldNihstro<0x00, 0x8, uint32_t> num_instructions;
+        BitFieldNihstro<0x0a, 0xc, uint32_t> dest_offset;
 
-        BitField<0x16, 0x2, Op> op;
-        BitField<0x16, 0x4, uint32_t> bool_uniform_id;
-        BitField<0x16, 0x2, uint32_t> int_uniform_id; // TODO: Verify that only this many bits are used...
+        BitFieldNihstro<0x16, 0x2, Op> op;
+        BitFieldNihstro<0x16, 0x4, uint32_t> bool_uniform_id;
+        BitFieldNihstro<0x16, 0x2, uint32_t> int_uniform_id; // TODO: Verify that only this many bits are used...
 
         BitFlag<0x18, uint32_t> refy;
         BitFlag<0x19, uint32_t> refx;
@@ -625,17 +625,17 @@ union Instruction {
             }
         }
 
-        BitField<0x00, 0x5, uint32_t> operand_desc_id;
+        BitFieldNihstro<0x00, 0x5, uint32_t> operand_desc_id;
 
-        BitField<0x05, 0x5, SourceRegister> src3;
-        BitField<0x0a, 0x7, SourceRegister> src2;
-        BitField<0x11, 0x5, SourceRegister> src1;
+        BitFieldNihstro<0x05, 0x5, SourceRegister> src3;
+        BitFieldNihstro<0x0a, 0x7, SourceRegister> src2;
+        BitFieldNihstro<0x11, 0x5, SourceRegister> src1;
 
-        BitField<0x05, 0x7, SourceRegister> src3i;
-        BitField<0x0c, 0x5, SourceRegister> src2i;
+        BitFieldNihstro<0x05, 0x7, SourceRegister> src3i;
+        BitFieldNihstro<0x0c, 0x5, SourceRegister> src2i;
 
         // Address register value is used for relative addressing of src2 / src3 (inverted)
-        BitField<0x16, 0x2, uint32_t> address_register_index;
+        BitFieldNihstro<0x16, 0x2, uint32_t> address_register_index;
 
         std::string AddressRegisterName() const {
             if (address_register_index == 0) return "";
@@ -644,13 +644,13 @@ union Instruction {
             else /*if (address_register_index == 3)*/ return "aL";
         }
 
-        BitField<0x18, 0x5, DestRegister> dest;
+        BitFieldNihstro<0x18, 0x5, DestRegister> dest;
     } mad;
 
     union {
-        BitField<0x16, 1, uint32_t> winding;
-        BitField<0x17, 1, uint32_t> prim_emit;
-        BitField<0x18, 2, uint32_t> vertex_id;
+        BitFieldNihstro<0x16, 1, uint32_t> winding;
+        BitFieldNihstro<0x17, 1, uint32_t> prim_emit;
+        BitFieldNihstro<0x18, 2, uint32_t> vertex_id;
     } setemit;
 };
 static_assert(sizeof(Instruction) == 0x4, "Incorrect structure size");
@@ -766,25 +766,25 @@ union SwizzlePattern {
     }
 
     // Components of "dest" that should be written to: LSB=dest.w, MSB=dest.x
-    BitField< 0, 4, uint32_t> dest_mask;
+    BitFieldNihstro< 0, 4, uint32_t> dest_mask;
 
     BitFlag < 4,    uint32_t> negate_src1;
-    BitField< 5, 2, Selector> src1_selector_3;
-    BitField< 7, 2, Selector> src1_selector_2;
-    BitField< 9, 2, Selector> src1_selector_1;
-    BitField<11, 2, Selector> src1_selector_0;
+    BitFieldNihstro< 5, 2, Selector> src1_selector_3;
+    BitFieldNihstro< 7, 2, Selector> src1_selector_2;
+    BitFieldNihstro< 9, 2, Selector> src1_selector_1;
+    BitFieldNihstro<11, 2, Selector> src1_selector_0;
 
     BitFlag <13,    uint32_t> negate_src2;
-    BitField<14, 2, Selector> src2_selector_3;
-    BitField<16, 2, Selector> src2_selector_2;
-    BitField<18, 2, Selector> src2_selector_1;
-    BitField<20, 2, Selector> src2_selector_0;
+    BitFieldNihstro<14, 2, Selector> src2_selector_3;
+    BitFieldNihstro<16, 2, Selector> src2_selector_2;
+    BitFieldNihstro<18, 2, Selector> src2_selector_1;
+    BitFieldNihstro<20, 2, Selector> src2_selector_0;
 
     BitFlag <22,    uint32_t> negate_src3;
-    BitField<23, 2, Selector> src3_selector_3;
-    BitField<25, 2, Selector> src3_selector_2;
-    BitField<27, 2, Selector> src3_selector_1;
-    BitField<29, 2, Selector> src3_selector_0;
+    BitFieldNihstro<23, 2, Selector> src3_selector_3;
+    BitFieldNihstro<25, 2, Selector> src3_selector_2;
+    BitFieldNihstro<27, 2, Selector> src3_selector_1;
+    BitFieldNihstro<29, 2, Selector> src3_selector_0;
 };
 static_assert(sizeof(SwizzlePattern) == 0x4, "Incorrect structure size");
 

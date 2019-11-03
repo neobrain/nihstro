@@ -11,9 +11,9 @@ inline uint32_t to_float24(float val) {
     static_assert(std::numeric_limits<float>::is_iec559, "Compiler does not adhere to IEEE 754");
 
     union Float32 {
-        BitField< 0, 23, uint32_t> mant;
-        BitField<23,  8, uint32_t> biased_exp;
-        BitField<31,  1, uint32_t> sign;
+        BitFieldNihstro< 0, 23, uint32_t> mant;
+        BitFieldNihstro<23,  8, uint32_t> biased_exp;
+        BitFieldNihstro<31,  1, uint32_t> sign;
 
         static int ExponentBias() {
             return 127;
@@ -23,9 +23,9 @@ inline uint32_t to_float24(float val) {
     union Float24 {
         uint32_t hex;
 
-        BitField< 0, 16, uint32_t> mant;
-        BitField<16,  7, uint32_t> biased_exp;
-        BitField<23,  1, uint32_t> sign;
+        BitFieldNihstro< 0, 16, uint32_t> mant;
+        BitFieldNihstro<16,  7, uint32_t> biased_exp;
+        BitFieldNihstro<23,  1, uint32_t> sign;
 
         static int ExponentBias() {
             return 63;

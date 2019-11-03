@@ -122,15 +122,15 @@ struct ConstantInfo {
     union {
         uint32_t full_first_word;
 
-        BitField<0, 2, Type> type;
+        BitFieldNihstro<0, 2, Type> type;
 
-        BitField<16, 8, uint32_t> regid;
+        BitFieldNihstro<16, 8, uint32_t> regid;
     };
 
     union {
         uint32_t value_hex[4];
 
-        BitField<0, 1, uint32_t> b;
+        BitFieldNihstro<0, 1, uint32_t> b;
 
         struct {
             uint8_t x;
@@ -150,7 +150,7 @@ struct ConstantInfo {
 };
 
 struct LabelInfo {
-    BitField<0, 8, uint32_t> id;
+    BitFieldNihstro<0, 8, uint32_t> id;
     uint32_t program_offset;
     uint32_t unk;
     uint32_t name_offset;
@@ -174,12 +174,12 @@ union OutputRegisterInfo {
         return *this;
     }
 
-    BitField< 0, 64, uint64_t> hex;
+    BitFieldNihstro< 0, 64, uint64_t> hex;
 
-    BitField< 0, 16, Type> type;
-    BitField<16, 16, uint64_t> id;
-    BitField<32,  4, uint64_t> component_mask;
-    BitField<32, 32, uint64_t> descriptor;
+    BitFieldNihstro< 0, 16, Type> type;
+    BitFieldNihstro<16, 16, uint64_t> id;
+    BitFieldNihstro<32,  4, uint64_t> component_mask;
+    BitFieldNihstro<32, 32, uint64_t> descriptor;
 
     const std::string GetMask() const {
         std::string ret;
@@ -246,8 +246,8 @@ struct UniformInfo {
 
         uint32_t symbol_offset;
         union {
-            BitField< 0, 16, uint32_t> reg_start;
-            BitField<16, 16, uint32_t> reg_end; // inclusive
+            BitFieldNihstro< 0, 16, uint32_t> reg_start;
+            BitFieldNihstro<16, 16, uint32_t> reg_end; // inclusive
         };
     } basic;
     std::string name;
