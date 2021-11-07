@@ -27,6 +27,7 @@
 
 
 #include <boost/fusion/include/adapt_struct.hpp>
+#include <boost/phoenix/core/reference.hpp>
 #include <boost/spirit/include/qi.hpp>
 
 #include "nihstro/parser_assembly.h"
