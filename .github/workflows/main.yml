@@ -24,9 +24,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
 
-      - name: Set up CMake and Boost
-        run: |
-          sudo apt-get install -y cmake libboost1.55-all-dev
+      - name: Set up Boost
+        run: sudo apt-get update && sudo apt-get install -yq libboost-dev
 
       - name: Build
         run: |
